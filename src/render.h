@@ -5,7 +5,8 @@
 
 #include "file.h"
 #include "cursor.h"
+#include "scroll.h"
 
-void render_screen(File* file, Cursor* cursor);
+void render_screen(File* file, Cursor* cursor, View* view, TerminalSize* tsize);
 
 #endif

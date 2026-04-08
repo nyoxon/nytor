@@ -9,6 +9,12 @@ typedef struct {
 	size_t col_offset;
 } View;
 
-void update_scroll(View* view, Cursor* c, size_t screen_rows);
+typedef struct {
+	size_t rows;
+	size_t cols;
+} TerminalSize;
+
+void update_scroll(View* view, Cursor* c, TerminalSize* tsize);
+int update_terminal_size(TerminalSize* tsize);
 
 #endif
