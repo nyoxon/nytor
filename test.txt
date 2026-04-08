@@ -1,0 +1,6 @@
+LINHA INSERIDA
+
+hello
+
+linha B
+linha C
