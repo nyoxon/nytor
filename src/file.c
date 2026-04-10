@@ -4,6 +4,7 @@
 #include <string.h>
 #include <fcntl.h>		// open
 #include <unistd.h>		// read and write
+#include <assert.h>
 
 static void destroy_line(void* ptr) {
 	Line* line = (Line*) ptr;
@@ -167,6 +168,7 @@ void file_free(File* file) {
 // 	return 0;
 // }
 
+
 int file_insert_char(File* file, Cursor* cursor, char c) {
 	if (cursor->y >= file->lines.size) {
 		return -1;
@@ -301,7 +303,7 @@ int file_merge_lines(File* file, Cursor* cursor) {
 	return 0;
 }
 
-void copy_line(File* file, Line* clipboard, size_t y) {
+void file_copy_line(File* file, Line* clipboard, size_t y) {
 	if (clipboard) {
 		free(clipboard->text);
 		free(clipboard);
@@ -320,7 +322,7 @@ void copy_line(File* file, Line* clipboard, size_t y) {
 	clipboard->text[line->len] = '\0';
 }
 
-void paste_line(File* file, Line* clipboard, size_t y) {
+void file_paste_line(File* file, Line* clipboard, size_t y) {
 	if (!clipboard) {
 		return;
 	}
@@ -333,4 +335,296 @@ void paste_line(File* file, Line* clipboard, size_t y) {
 
 	vector_insert(&file->lines, y, &new_line);
 	file->dirty = 1;
+}
+
+int file_move_line_up(File* file, size_t* y) {
+	if (*y == 0) {
+		return -1;
+	}
+
+	int ret = vector_swap(&file->lines, *y, *y - 1);
+
+	if (ret < 0) {
+		return -1;
+	}
+
+	(*y)--;
+
+	file->dirty = 1;
+
+	return 0;
+}
+
+int file_move_line_down(File* file, size_t* y) {
+	if (*y >= file->lines.size - 1) {
+		return -1;
+	}
+
+	int ret = vector_swap(&file->lines, *y, *y + 1);
+
+	if (ret < 0) {
+		return -1;
+	}
+
+	(*y)++;
+
+	file->dirty = 1;
+
+	return 0;
+}
+
+void file_copy_selection(File* file, Line** clipboard, Selection* sel) {
+	if (!sel->active) {
+		return;
+	}
+
+	if (sel->start_x == sel->end_x && sel->start_y == sel->end_y) {
+		return;
+	}
+
+	size_t x1, y1, x2, y2;
+	selection_normalize(sel, &x1, &y1, &x2, &y2);
+
+	if (*clipboard) {
+		free((*clipboard)->text);
+		free((*clipboard));
+		*clipboard = NULL;
+	}
+
+	size_t total_len = 0;
+
+	for (size_t y = y1; y <= y2; y++) {
+		Line* line = vector_get(&file->lines, y);
+
+		size_t start = (y == y1) ? x1 : 0;
+		size_t end   = (y == y2) ? x2 : line->len;
+
+		total_len += (end - start);
+	}
+
+	*clipboard = malloc(sizeof(Line));
+	(*clipboard)->text = malloc(total_len + 1);
+	(*clipboard)->len = total_len;
+
+	size_t pos = 0;
+
+	for (size_t y = y1; y <= y2; y++) {
+		Line* line = vector_get(&file->lines, y);
+
+		size_t start = (y == y1) ? x1 : 0;
+		size_t end   = (y == y2) ? x2 : line->len;
+
+		memcpy((*clipboard)->text + pos, line->text + start, end - start);
+		pos += (end - start);
+	}
+
+	(*clipboard)->text[pos] = '\0';
+}
+
+void file_paste_clipboard(File* file, Line* clipboard, Cursor* c) {
+	if (!clipboard || clipboard->len == 0) {
+		return;
+	}
+
+	Line* start_line = vector_get(&file->lines, c->y);
+	Line backup_line;
+	backup_line.text = malloc(start_line->len + 1);
+
+	if (!backup_line.text) {
+		return;
+	}
+
+	memcpy(backup_line.text, start_line->text, start_line->len);
+	backup_line.len = start_line->len;
+	backup_line.text[start_line->len] = '\0';
+
+	size_t start = 0;
+	int new_lines = 0;
+	int start_cx = c->x;
+	int first = 1;
+	size_t insert_y = c->y;
+
+	vector_remove_and_destroy(&file->lines, c->y);
+	printf("c->y: %ld, size: %ld\n", c->y, file->lines.size);
+
+	for (size_t i = 0; i < clipboard->len; i++) {
+		if (clipboard->text[i] == '\n') {
+			new_lines++;
+			size_t len = i - start + 1;
+
+			Line line;
+
+			if (first) {
+				size_t prefix_size = start_cx;
+				size_t total_len = len + prefix_size;
+				line.text = malloc(total_len + 1);
+
+				memcpy(line.text, backup_line.text, prefix_size);
+				memcpy(line.text + prefix_size,
+					   clipboard->text + start, len);
+
+				line.len = total_len;
+				line.text[total_len] = '\0';
+
+				first = 0;
+			} else {
+				line.text = malloc(len + 1);
+				memcpy(line.text, clipboard->text + start, len);
+				line.text[len] = '\0';
+				line.len = len;
+			}
+
+			printf("INSERT at y=%ld size(before)=%zu\n", c->y, file->lines.size);
+			vector_insert(&file->lines, insert_y, &line);
+			printf("INSERT at y=%ld size(before)=%zu\n", c->y, file->lines.size);
+			insert_y++;
+
+			start = i + 1;
+		}
+	}
+
+	if (clipboard->len - start > 0) {
+		if (new_lines == 0) {
+			size_t prefix_size = start_cx;
+			size_t suffix_size = backup_line.len - start_cx;
+			size_t len = prefix_size + clipboard->len + suffix_size;
+
+			Line line;
+			line.text = malloc(len + 2);
+
+			if (!line.text) {
+				free(backup_line.text);
+				return;
+			}
+
+			memcpy(line.text, backup_line.text, prefix_size);
+			memcpy(line.text + prefix_size,
+				   clipboard->text, clipboard->len);
+
+			memcpy(line.text + prefix_size + clipboard->len, 
+				backup_line.text + start_cx, suffix_size);
+			line.text[len - 1] = '\n';
+			line.text[len] = '\0';
+			line.len = len;
+
+			vector_insert(&file->lines, c->y, &line);
+
+			c->x = prefix_size + clipboard->len;
+			insert_y++;
+		} else {
+			size_t clipboard_remainder = (clipboard->len - start);
+			size_t start_line_remainder = (backup_line.len - start_cx);
+			size_t len = clipboard_remainder + start_line_remainder;
+
+			Line line;
+			line.text = malloc(len + 1);
+
+			if (!line.text) {
+				free(backup_line.text);
+				return;
+			}
+
+			memcpy(line.text, clipboard->text + start, clipboard_remainder);
+
+			memcpy(line.text + clipboard_remainder,
+				backup_line.text + start_cx,
+				start_line_remainder);
+
+			line.text[len] = '\0';
+			line.len = len;
+
+			vector_insert(&file->lines, insert_y, &line);
+			insert_y++;
+
+			c->x = clipboard_remainder;
+		}
+	}
+
+	if (new_lines > 0) {
+		c->y = insert_y - 1;
+	}
+
+	free(backup_line.text);
+	file->dirty = 1;
+}
+
+void file_select_line(File* file, size_t y, Selection* sel) {
+	if (y >= file->lines.size) {
+		return;
+	}
+
+	Line* line = vector_get(&file->lines, y);
+
+	sel->active = 1;
+	sel->start_y = y;
+	sel->end_y = y;
+
+	sel->start_x = 0;
+	sel->end_x = line->len;
+}
+
+void file_select_all_file(File* file, Selection* sel, Cursor* c) {
+	Line* last_line = vector_get(&file->lines, file->lines.size - 1);
+
+	sel->active = 1;
+	sel->start_x = 0;
+	sel->end_x = last_line->len;
+	sel->start_y = 0;
+	sel->end_y = file->lines.size - 1;
+
+	c->x = sel->end_x;
+	c->y = sel->end_y;
+}
+
+int line_get_indent(Line* line) {
+	int indent = 0;
+
+	while ((size_t) indent < line->len && line->text[indent] == ' ') {
+		indent++;
+	}
+
+	return indent;
+}
+
+int file_compute_indent_level(File* file, int up_to_line) {
+	int depth = 0;
+
+	for (int y = 0; y < up_to_line; y++) {
+		Line* line = vector_get(&file->lines, (size_t) y);
+
+		for (size_t i = 0; i < line->len; i++) {
+			if (line->text[i] == '{') {
+				depth++;
+			}
+
+			if (line->text[i] == '}') {
+				depth--;
+			}
+
+			if (depth < 0) {
+				depth = 0;
+			}
+		}
+	}
+
+	return depth;
+}
+
+void line_set_indent(Line* line, size_t indent) {
+	size_t i = 0;
+
+	while (i < line->len++ && line->text[i] == ' ') {
+		i++;
+	}
+
+	size_t new_len = indent + (line->len - i);
+	char* new_text = malloc(new_len + 1);
+
+	memset(new_text, ' ', indent);
+	memcpy(new_text + indent, line->text + i, line->len - i);
+
+	new_text[new_len] = '\0';
+	free(line->text);
+	line->text = new_text;
+	line->len = new_len;
 }

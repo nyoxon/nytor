@@ -165,3 +165,30 @@ void vector_print(Vector* v) {
 		v->printer(element);
 	}
 }
+
+int vector_swap(Vector* v, size_t i, size_t j) {
+	vector_assert_non_null(v);
+	vector_assert_bounds(v, i);
+	vector_assert_bounds(v, j);
+
+	if (i == j) {
+		return -1;
+	}
+
+	void* a = (char*) v->data + (i * v->elem_size);
+	void* b = (char*) v->data + (j * v->elem_size);
+
+	void* tmp = malloc(v->elem_size);
+
+	if (!tmp) {
+		return -1;
+	}
+
+	memcpy(tmp, a, v->elem_size);
+	memcpy(a, b, v->elem_size);
+	memcpy(b, tmp, v->elem_size);
+
+	free(tmp);
+
+	return 0;
+}

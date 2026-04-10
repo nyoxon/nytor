@@ -25,6 +25,8 @@ void vector_remove_and_destroy(Vector* v, size_t index);
 void vector_add_printer(Vector* v, Printer printer);
 void vector_print(Vector* v);
 
+int vector_swap(Vector* v, size_t i, size_t j);
+
 void* vector_get(Vector* v, size_t index);
 void* vector_get_unchecked(Vector* v, size_t index);
 

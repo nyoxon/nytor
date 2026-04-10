@@ -6,7 +6,7 @@ TARGET = nytor
 SRCDIR = src
 OBJDIR = build
 
-SRCS = main.c buffer.c file.c input.c render.c vector.c cursor.c scroll.c
+SRCS = main.c file.c input.c render.c vector.c cursor.c scroll.c
 OBJS = $(SRCS:%.c=$(OBJDIR)/%.o)
 
 all: $(TARGET)

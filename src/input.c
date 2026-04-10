@@ -2,6 +2,7 @@
 #include <termios.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 static struct termios orig_termios;
 
@@ -40,7 +41,7 @@ int read_key() {
 		return c;
 	}
 
-	char seq[3];
+	char seq[5];
 
 	if (read(STDIN_FILENO, &seq[0], 1) != 1) {
 		return '\033';
@@ -60,6 +61,38 @@ int read_key() {
 			return KEY_ARROW_RIGHT;
 		case 'D':
 			return KEY_ARROW_LEFT;
+		}
+	}
+
+	if (read(STDIN_FILENO, &seq[2], 1) != 1) {
+		return '\033';
+	}
+
+	if (read(STDIN_FILENO, &seq[3], 1) != 1) {
+		return '\033';
+	}
+
+	if (read(STDIN_FILENO, &seq[4], 1) != 1) {
+		return '\033';
+	}
+
+	if (seq[1] >= '0' && seq[1] <= '9') {
+		if (seq[2] == ';') {
+			int mod = seq[3];
+			char key = seq[4];
+
+			if (mod == MOD_CTRL) {
+				switch (key) {
+					case 'A':
+						return KEY_CTRL_ARROW_UP;
+					case 'B':
+						return KEY_CTRL_ARROW_DOWN;
+					case 'C':
+						return KEY_CTRL_ARROW_RIGHT;
+					case 'D':
+						return KEY_CTRL_ARROW_LEFT;
+				}
+			}
 		}
 	}
 
