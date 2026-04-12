@@ -46,7 +46,7 @@ void render_screen(File* file, Cursor* cursor, View* view, TerminalSize* tsize, 
 	write(STDOUT_FILENO, "\033[H", 3);
 
 	size_t screen_rows = tsize->rows;
-	// size_t screen_cols = tsize->cols;
+	size_t screen_cols = tsize->cols;
 
 	size_t x1 = 0, y1 = 0, x2 = 0, y2 = 0;
 
@@ -63,11 +63,22 @@ void render_screen(File* file, Cursor* cursor, View* view, TerminalSize* tsize, 
 
 		Line* line = vector_get(&file->lines, file_row);
 
+		size_t start = view->col_offset;
+		size_t end = start + screen_cols;
+
+		if (start > line->len) {
+			start = line->len;
+		}
+
+		if (end > line->len) {
+			end = line->len;
+		}
+
 		int in_selection = 0;
 
 		/*inefficient, since it iterates over all the chars 
 		on the planet (see alternative later)*/
-		for (size_t x = 0; x < line->len; x++) {
+		for (size_t x = start; x < end; x++) {
 			int selected = is_selected(sel, x, file_row, x1, y1, x2, y2);
 
 			if (selected && !in_selection) {
@@ -82,6 +93,8 @@ void render_screen(File* file, Cursor* cursor, View* view, TerminalSize* tsize, 
 
 			write(STDOUT_FILENO, &line->text[x], 1);
 		}
+
+		write(STDOUT_FILENO, "\n", 1);
 
 		if (in_selection) {
 			write(STDOUT_FILENO, "\033[0m", 4);

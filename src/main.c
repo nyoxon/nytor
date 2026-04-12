@@ -21,7 +21,7 @@ void handle_exit_signal() {
 
 void clean_terminal() {
 	write(STDOUT_FILENO, "\033[2J", 4);
-	write(STDOUT_FILENO, "\033[H", 3);	
+	write(STDOUT_FILENO, "\033[H", 3);  
 }
 
 int main(int argc, const char* argv[]) {
@@ -39,9 +39,9 @@ int main(int argc, const char* argv[]) {
 	TerminalSize tsize = {.rows = 24, .cols = 80};
 	Selection sel = {0};
 	int selecting = 0;
-	Line* clipboard = NULL;
+	Clipboard cb = {0};
 
-	while (1) {	
+	while (1) { 
 		render_screen(file, &c, &view, &tsize, &sel);
 
 		int key = read_key();
@@ -49,9 +49,8 @@ int main(int argc, const char* argv[]) {
 		if (exit_requested) {
 			clean_terminal();
 
-			if (clipboard) {
-				free(clipboard->text);
-				free(clipboard);
+			if (cb.text) {
+				free(cb.text);
 			}
 
 			disable_raw_mode();
@@ -61,19 +60,19 @@ int main(int argc, const char* argv[]) {
 
 		if (key == CTRL_KEY('q')) {
 			if (file->dirty) {
-				clean_terminal();
-				char msg[] = "file has been changed but not saved. do you want to save?\n(y) or (n)";		
-				write(STDOUT_FILENO, msg, strlen(msg));
+				while (1) { // blocks the main thread
+					clean_terminal();
+					char msg[] = "save before exit?\n(y/n)";       
+					write(STDOUT_FILENO, msg, strlen(msg));
 
-				while (1) {
 					key = read_key();
 
-					if (key == 'y') {
+					if (key == 'y' || key == 'Y') {
 						file_save(file);
 						break;
 					}
 
-					if (key == 'n') {
+					if (key == 'n' || key == 'N') {
 						break;
 					}
 				}
@@ -100,9 +99,9 @@ int main(int argc, const char* argv[]) {
 				}
 
 				file_insert_char(file, &c, open);
-				c.x++;
 
 				file_insert_char(file, &c, close);
+				c.x--;
 
 				break;
 			}
@@ -114,11 +113,23 @@ int main(int argc, const char* argv[]) {
 					c.x++;
 				} else {
 					file_insert_char(file, &c, key);
-					c.x++;
 				}
 
 				break;
 			}
+
+			case CTRL_KEY('w'):
+				c.x = 0;
+				break;
+
+			case CTRL_KEY('e'):
+				size_t indent = line_get_indent(line);
+				c.x = indent;
+				break;
+
+			case CTRL_KEY('d'):
+				c.x = line_size;
+				break;
 
 			case CTRL_KEY('a'):
 				if (selecting) {
@@ -155,7 +166,7 @@ int main(int argc, const char* argv[]) {
 
 			case CTRL_KEY('c'):
 				if (sel.active) {
-					file_copy_selection(file, &clipboard, &sel);
+					file_copy_selection(file, &cb, &sel);
 					selection_clear(&sel);
 					selecting = 0;
 				}
@@ -163,17 +174,17 @@ int main(int argc, const char* argv[]) {
 				break;
 
 			case CTRL_KEY('v'):
-				if (clipboard) {
-					file_paste_clipboard(file, clipboard, &c);
+				if (cb.text) {
+					file_paste_clipboard(file, &cb, &c);
 				}
 
 				break;
 
-			case KEY_CTRL_ARROW_UP:
+			case KEY_CTRL_SHIFT_ARROW_UP:
 				file_move_line_up(file, &c.y);
 				break;
 
-			case KEY_CTRL_ARROW_DOWN:
+			case KEY_CTRL_SHIFT_ARROW_DOWN:
 				file_move_line_down(file, &c.y);
 				break;
 
@@ -182,7 +193,7 @@ int main(int argc, const char* argv[]) {
 
 				if (selecting) {
 					selection_update(&sel, &c);
-				}		
+				}       
 
 				break;
 
@@ -191,7 +202,7 @@ int main(int argc, const char* argv[]) {
 
 				if (selecting) {
 					selection_update(&sel, &c);
-				}		
+				}       
 
 				break;
 
@@ -200,7 +211,7 @@ int main(int argc, const char* argv[]) {
 
 				if (selecting) {
 					selection_update(&sel, &c);
-				}		
+				}       
 
 				break;
 
@@ -209,31 +220,30 @@ int main(int argc, const char* argv[]) {
 
 				if (selecting) {
 					selection_update(&sel, &c);
-				}		
+				}       
 
 				break;
 
 			case 127:
-				if (c.x > 0) {
-					file_delete_char(file, &c);
-					c.x--;
-				} else if (c.y > 0) {
-					file_merge_lines(file, &c);
-					c.y--;
+				if (sel.active) {
+					if (selecting) {
+						selecting = 0;
+					}
 
-					Line* line = vector_get(&file->lines, c.y);
-					c.x = line->len;
-
-					if (c.x > 0 && line->text[c.x - 1] == '\n') {
-						c.x--;
+					file_delete_selection(file, &c, &sel);
+				} else {
+					if (c.x > 0) {
+						file_delete_char(file, &c);
+					} else if (c.y > 0) {
+						file_merge_lines(file, &c);
 					}
 				}
+
 				break;
 
 			case '\t':
 				for (int i = 0; i < TAB_SIZE; i++) {
 					file_insert_char(file, &c, ' ');
-					c.x++;
 				}
 				break;
 
@@ -248,34 +258,28 @@ int main(int argc, const char* argv[]) {
 				c.y++;
 				c.x = 0;
 
-				int depth = file_compute_indent_level(file, c.y);
-				int cur_indent = line_get_indent(line);
-				int indent = (depth == 0) ? cur_indent : TAB_SIZE * depth;
+				int indent = line_get_indent(line);
 
 				if (is_brace_pair) {
 					for (int i = 0; i < indent; i++) {
 						file_insert_char(file, &c, ' ');
-						c.x++;
 					}
 
 					file_insert_newline(file, &c);
 					c.y++;
 
 					Line* closing = vector_get(&file->lines, c.y);
-					int close_depth = file_compute_indent_level(file, c.y) - 1;
 
-					if (close_depth < 0) {
-						close_depth = 0;
-					}
-
-					line_set_indent(closing, close_depth * TAB_SIZE);
+					line_set_indent(closing, indent);
 					c.y--;
 
 					c.x = indent;
-				} else {
-					for (int i = 0; i < cur_indent; i++) {
+					for (int i = 0; i < TAB_SIZE; i++) {
 						file_insert_char(file, &c, ' ');
-						c.x++;
+					}
+				} else {
+					for (int i = 0; i < indent; i++) {
+						file_insert_char(file, &c, ' ');
 					}
 				}
 
@@ -291,7 +295,6 @@ int main(int argc, const char* argv[]) {
 			default:
 				if (key >= 32 && key <= 126) {
 					file_insert_char(file, &c, key);
-					c.x++;
 				}
 				break;
 		}
@@ -305,12 +308,10 @@ int main(int argc, const char* argv[]) {
 		update_scroll(&view, &c, &tsize);
 	}
 
-	write(STDOUT_FILENO, "\033[2J", 4);
-	write(STDOUT_FILENO, "\033[H", 3);
+	clean_terminal();
 
-	if (clipboard) {
-		free(clipboard->text);
-		free(clipboard);
+	if (cb.text) {
+		free(cb.text);
 	}
 
 	file_free(file);

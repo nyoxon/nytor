@@ -11,6 +11,14 @@ void update_scroll(View* view, Cursor* c, TerminalSize* tsize) {
 	if (c->y >= view->row_offset + tsize->rows) {
 		view->row_offset = c->y - tsize->rows + 1;
 	}
+
+	if (c->x < view->col_offset) {
+		view->col_offset = c->x;
+	}
+
+	if (c->x >= view->col_offset + tsize->cols) {
+		view->col_offset = c->x - tsize->cols + 1;
+	}
 }
 
 int update_terminal_size(TerminalSize* tsize) {

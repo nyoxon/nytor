@@ -93,6 +93,19 @@ int read_key() {
 						return KEY_CTRL_ARROW_LEFT;
 				}
 			}
+
+			if (mod == MOD_CTRL_SHIFT) {
+				switch (key) {
+					case 'A':
+						return KEY_CTRL_SHIFT_ARROW_UP;
+					case 'B':
+						return KEY_CTRL_SHIFT_ARROW_DOWN;
+					case 'C':
+						return KEY_CTRL_SHIFT_ARROW_RIGHT;
+					case 'D':
+						return KEY_CTRL_SHIFT_ARROW_LEFT;
+				}
+			}
 		}
 	}
 

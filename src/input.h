@@ -6,7 +6,7 @@
 #define MOD_CTRL '5'
 #define MOD_SHIFT '2'
 #define MOD_ALT '3'
-// #define MOD_CTRL_SHIFT '6'
+#define MOD_CTRL_SHIFT '6'
 
 enum EditorKey {
 	KEY_ARROW_UP = 1000,
