@@ -41,12 +41,42 @@ static int is_selected(Selection* sel, size_t x, size_t y,
 	return 1;
 }
 
+static size_t get_gutter_width(size_t line_count) {
+	int digits = 1;
+	size_t tmp = line_count;
+
+	while (tmp >= 10) {
+		tmp /= 10;
+		digits++;
+	}
+	
+	return digits + 1;	
+}
+
+static void index_line(size_t y, size_t line_count) {
+	int digits = 1;
+	size_t tmp = line_count;
+
+	while (tmp >= 10) {
+		tmp /= 10;
+		digits++;
+	}
+
+	char buf[32];
+	int len = snprintf(buf, sizeof(buf), "%*zu ", digits, y + 1);
+
+	write(STDOUT_FILENO, "\033[34m", 5);
+	write(STDOUT_FILENO, buf, len);
+	write(STDOUT_FILENO, "\033[0m", 4);
+}
+
 void render_screen(File* file, Cursor* cursor, View* view, TerminalSize* tsize, Selection* sel) {
 	clear_screen();
 	write(STDOUT_FILENO, "\033[H", 3);
 
 	size_t screen_rows = tsize->rows;
 	size_t screen_cols = tsize->cols;
+	size_t gutter_width = get_gutter_width(file->lines.size);
 
 	size_t x1 = 0, y1 = 0, x2 = 0, y2 = 0;
 
@@ -62,6 +92,8 @@ void render_screen(File* file, Cursor* cursor, View* view, TerminalSize* tsize, 
 		}
 
 		Line* line = vector_get(&file->lines, file_row);
+
+		index_line(file_row, file->lines.size);
 
 		size_t start = view->col_offset;
 		size_t end = start + screen_cols;
@@ -101,5 +133,6 @@ void render_screen(File* file, Cursor* cursor, View* view, TerminalSize* tsize, 
 		}
 	}
 
-	move_cursor(cursor->x - view->col_offset, cursor->y - view->row_offset);
+	move_cursor(cursor->x + gutter_width - view->col_offset,
+				cursor->y - view->row_offset);
 }

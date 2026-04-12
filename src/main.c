@@ -180,6 +180,70 @@ int main(int argc, const char* argv[]) {
 
 				break;
 
+			case KEY_CTRL_ARROW_UP:
+				if (view.row_offset > 0) {
+					view.row_offset--;
+
+					if (c.y > view.row_offset + tsize.rows - 1) {
+						c.y--;
+						c.x = 0;
+					}
+				}
+
+				break;
+
+			case KEY_ALT_ARROW_UP:
+				if (view.row_offset > 0) {
+					size_t delta = tsize.rows;
+
+					if (delta > view.row_offset) {
+						delta = view.row_offset;
+					}
+
+					view.row_offset -= delta;
+
+					if (c.y >= delta) {
+						c.y -= delta;
+					} else {
+						c.y = 0;
+					}
+				}
+
+				break;
+
+			case KEY_CTRL_ARROW_DOWN:
+				if (view.row_offset + tsize.rows < line_count) {
+					view.row_offset++;
+
+					if (c.y < view.row_offset) {
+						c.y++;
+						c.x = 0;
+					}
+				}
+				
+				break;
+
+			case KEY_ALT_ARROW_DOWN:
+				size_t max_offset = (line_count > tsize.rows) 
+					? line_count - tsize.rows : 0;
+
+				if (view.row_offset < max_offset) {
+					size_t delta = tsize.rows;
+
+					if (view.row_offset + delta > max_offset) {
+						delta = max_offset - view.row_offset;
+					}
+
+					view.row_offset += delta;
+					c.y += delta;
+
+					if (c.y >= line_count) {
+						c.y = line_count - 1;
+					}
+				}
+
+				break;
+
 			case KEY_CTRL_SHIFT_ARROW_UP:
 				file_move_line_up(file, &c.y);
 				break;
