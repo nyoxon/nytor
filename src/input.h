@@ -3,6 +3,8 @@
 
 // to read and handle input from user
 
+#define CTRL_KEY(k) ((k) & 0x1f)
+#define TAB_SIZE 4
 #define MOD_CTRL '5'
 #define MOD_SHIFT '2'
 #define MOD_ALT '3'

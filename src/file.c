@@ -6,11 +6,6 @@
 #include <unistd.h>		// read and write
 #include <assert.h>
 
-static void destroy_line(void* ptr) {
-	Line* line = (Line*) ptr;
-	free(line->text);
-}
-
 static char* read_file(const char* filename, size_t* size) {
 	int fd = open(filename, O_RDONLY);
 
@@ -67,13 +62,11 @@ static void split_lines(File* file, const char* data, size_t size) {
 	}
 }
 
-void line_replace(Line* line, char* new_text, size_t new_len) {
-	free(line->text);
-	line->text = new_text;
-	line->len = new_len;
-}
+int file_open(File* file, const char* filename, int* new_file) {
+	if (*new_file) { // passed *new_file must be 0
+		return -1;
+	}
 
-File* file_open(const char* filename) {
 	size_t size;
 	char* data = read_file(filename, &size);
 
@@ -81,18 +74,18 @@ File* file_open(const char* filename) {
 		int fd = open(filename, O_WRONLY | O_CREAT, 0644);
 
 		if (fd < 0) {
-			return NULL;
+			return -1;
 		}
 
+		*new_file = 1;
 		close(fd);
 		data = strdup("");
 		size = 0;
 	}
 
-	File* file = malloc(sizeof(File));
 	file->filename = strdup(filename);
-	vector_init(&file->lines, sizeof(Line), destroy_line);
-	file->dirty = 0;
+	vector_init(&file->lines, sizeof(Line), vector_line_destroy);
+	file->dirty = (*new_file) ? 1 : 0;
 
 	if (size == 0) {
 		Line line = {0};
@@ -104,7 +97,7 @@ File* file_open(const char* filename) {
 	}
 
 	free(data);
-	return file;
+	return 0;
 }
 
 int file_save(File* file) {
@@ -118,6 +111,11 @@ int file_save(File* file) {
 
 	if (fd < 0) {
 		return -1;
+	}
+
+	if (file->lines.size == 0) {
+		write(fd, "", 1);
+		return 0;
 	}
 
 	for (size_t i = 0; i < file->lines.size; i++) {
@@ -142,32 +140,27 @@ void file_free(File* file) {
 
 	free(file->filename);
 	vector_free(&file->lines);
-
-	free(file);
 }
 
-// int file_insert_line(File* file, size_t index, const char* text) {
-// 	if (index >= file->lines.size) {
-// 		return -1;
-// 	}
+int file_insert_line(File* file, size_t y, const char* text) {
+	if (y >= file->lines.size) {
+		return -1;
+	}
 
-// 	Line line;
-// 	line.len = strlen(text);
-// 	line.text = malloc(line.len + 2); // +1 for '\n' and +1 for '\0'
-// 	strcpy(line.text, text);
+	size_t len = strlen(text);
+	Line line;
 
-// 	if (line.text[line.len - 1] != '\n') {
-// 		line.text[line.len] = '\n';
-// 		line.len++;
-// 		line.text[line.len] = '\0';
-// 	}
+	line.text = malloc(len + 1); // '\0'
+	memcpy(line.text, text, len);
+	line.len = len;
+	line.text[len] = '\0';
 
-// 	// line.dirty = 1;
-// 	vector_insert(&file->lines, index, &line);
+	// line.dirty = 1;
+	vector_insert(&file->lines, y, &line);
 
-// 	file->dirty = 1;
-// 	return 0;
-// }
+	file->dirty = 1;
+	return 0;
+}
 
 // int file_delete_line(File* file, size_t index) {
 // 	if (index >= file->lines.size) {
@@ -198,9 +191,7 @@ int file_insert_char(File* file, Cursor* cursor, char c) {
 	memcpy(new_text + cursor->x + 1, line->text + cursor->x, line->len - cursor->x);
 	new_text[line->len + 1] = '\0';
 
-	free(line->text);
-	line->text = new_text;
-	line->len++;
+	line_replace(line, new_text, line->len + 1);
 	// line->dirty = 1;
 	cursor->x++;
 
@@ -226,9 +217,7 @@ int file_delete_char(File* file, Cursor* cursor) {
 
 	new_text[line->len - 1] = '\0';
 
-	free(line->text);
-	line->text = new_text;
-	line->len--;
+	line_replace(line, new_text, line->len - 1);
 	// line->dirty = 1;
 	cursor->x--;
 
@@ -417,6 +406,7 @@ void file_delete_selection(File* file, Cursor* c, Selection* sel) {
 	}
 
 	selection_clear(sel);
+	file->dirty = 1;
 }
 
 void file_copy_selection(File* file, Clipboard* cb, Selection* sel) {
@@ -642,57 +632,4 @@ void file_select_all_file(File* file, Selection* sel, Cursor* c) {
 
 	c->x = last_line->len;
 	c->y = sel->end_y;
-}
-
-int line_get_indent(Line* line) {
-	int indent = 0;
-
-	while ((size_t) indent < line->len && line->text[indent] == ' ') {
-		indent++;
-	}
-
-	return indent;
-}
-
-int file_compute_indent_level(File* file, int up_to_line) {
-	int depth = 0;
-
-	for (int y = 0; y < up_to_line; y++) {
-		Line* line = vector_get(&file->lines, (size_t) y);
-
-		for (size_t i = 0; i < line->len; i++) {
-			if (line->text[i] == '{') {
-				depth++;
-			}
-
-			if (line->text[i] == '}') {
-				depth--;
-			}
-
-			if (depth < 0) {
-				depth = 0;
-			}
-		}
-	}
-
-	return depth;
-}
-
-void line_set_indent(Line* line, size_t indent) {
-	size_t i = 0;
-
-	while (i < line->len && line->text[i] == ' ') {
-		i++;
-	}
-
-	size_t new_len = indent + (line->len - i);
-	char* new_text = malloc(new_len + 1);
-
-	memset(new_text, ' ', indent);
-	memcpy(new_text + indent, line->text + i, line->len - i);
-
-	new_text[new_len] = '\0';
-	free(line->text);
-	line->text = new_text;
-	line->len = new_len;
 }
