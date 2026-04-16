@@ -7,14 +7,22 @@
 #define DEFAULT_TERMINAL_WIDTH 50
 #define DEFAULT_TERMINAL_HEIGHT 24
 
-int editor_init(Editor* editor, const char* filename) {
+int editor_init
+(
+	Editor* editor, 
+	const char* filename, 
+	int render_line_enumeration,
+	int debug_mode
+) 
+{
 	editor->new_file = 0;
+	editor->result.reason = NULL;
 
-	if (file_open(&editor->file, filename, &editor->new_file) < 0) {
+	if (file_open(&editor->file, filename, &editor->new_file,
+				  &editor->result) < 0) 
+	{
 		return -1;
 	}
-
-	editor->filename = filename;
 
 	editor->tsize.rows = DEFAULT_TERMINAL_HEIGHT;
 	editor->tsize.cols = DEFAULT_TERMINAL_WIDTH;
@@ -32,6 +40,9 @@ int editor_init(Editor* editor, const char* filename) {
 	editor->cb.len = 0;
 	editor->cb.linewise = 0;
 
+	editor->render_line_enumeration = render_line_enumeration;
+	editor->debug_mode = debug_mode;
+
 	return 0;
 }
 
@@ -45,8 +56,21 @@ void editor_free(Editor* editor) {
 		return ;
 	}
 
+	result_free(&editor->result);
 	clipboard_free(&editor->cb);
 	file_free(&editor->file);
+
+	if (editor->log.fd > 0) {
+		close(editor->log.fd);
+	}
+}
+
+void editor_log_write(const Editor* editor) {
+	if (editor->log.fd < 0 || !editor->result.reason) {
+		return;
+	}
+
+	log_write(&editor->log, editor->result.reason);
 }
 
 static void move_cursor(size_t x, size_t y) {
@@ -118,7 +142,6 @@ void editor_render(Editor* editor) {
 
 	size_t screen_rows = editor->tsize.rows;
 	size_t screen_cols = editor->tsize.cols;
-	size_t gutter_width = get_gutter_width(editor->file.lines.size);
 
 	size_t x1 = 0, y1 = 0, x2 = 0, y2 = 0;
 
@@ -135,7 +158,9 @@ void editor_render(Editor* editor) {
 
 		Line* line = vector_get(&editor->file.lines, file_row);
 
-		index_line(file_row, editor->file.lines.size);
+		if (editor->render_line_enumeration) {
+			index_line(file_row, editor->file.lines.size);
+		}
 
 		size_t start = editor->view.col_offset;
 		size_t end = start + screen_cols;
@@ -175,8 +200,20 @@ void editor_render(Editor* editor) {
 		}
 	}
 
-	move_cursor(editor->cursor.x + gutter_width - editor->view.col_offset,
-				editor->cursor.y - editor->view.row_offset);
+	if (editor->debug_mode) {
+		log_write(&editor->log, "editor_render: SUCCESS");
+	}
+
+	if (editor->render_line_enumeration) {
+
+		size_t gutter_width = get_gutter_width(editor->file.lines.size);
+		move_cursor(editor->cursor.x + 
+					gutter_width - editor->view.col_offset,
+					editor->cursor.y - editor->view.row_offset);
+	} else {
+		move_cursor(editor->cursor.x,
+					editor->cursor.y - editor->view.row_offset);		
+	}
 }
 
 int editor_quit(Editor* editor) {
@@ -189,18 +226,25 @@ int editor_quit(Editor* editor) {
 			int key = read_key();
 
 			if (key == 'y' || key == 'Y') {
-				file_save(&editor->file);
+				if (file_save(&editor->file, &editor->result) < 0) {
+					return EIE_FATAL_ERROR;
+				}
+
 				break;
 			}
 
 			if (key == 'n' || key == 'N') {
 				if (editor->new_file) {
-					unlink(editor->filename);
+					unlink(editor->file.filename);
 				}
 
 				break;
 			}
 		}
+	}
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, "editor_quit: SUCCESS");
 	}
 
 	return 0;
@@ -216,16 +260,34 @@ static char get_delimiter_pair(int key) {
 	return ' ';
 }
 
-static void editor_handle_open_delimiters(Editor* editor, int key) {
+static int editor_handle_open_delimiters(Editor* editor, int key) {
 	char open = key;
 	char close = get_delimiter_pair(open);
 
-	file_insert_char(&editor->file, &editor->cursor, open);
-	file_insert_char(&editor->file, &editor->cursor, close);
+	int ret = file_insert_char(&editor->file, &editor->cursor, open,
+		&editor->result);
+
+	if (ret < 0) {
+		return ret;
+	}
+
+	ret = file_insert_char(&editor->file, &editor->cursor, close,
+		&editor->result);
+
+	if (ret < 0) {
+		return ret;
+	}
+
 	editor->cursor.x--;
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, "editor_handle_open_delimiters: SUCCESS");
+	}
+
+	return 0;
 }
 
-static void editor_handle_close_delimiters
+static int editor_handle_close_delimiters
 (
 	Editor* editor, 
 	Line* line, 
@@ -236,58 +298,157 @@ static void editor_handle_close_delimiters
 	 	line->text[editor->cursor.x] == key) {
 		editor->cursor.x++;
 	} else {
-		file_insert_char(&editor->file, &editor->cursor, key);
-	}	
+		int ret = file_insert_char(&editor->file, &editor->cursor, key,
+			&editor->result);
+
+		if (ret < 0) {
+			return ret;
+		}
+	}
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, "editor_handle_close_delimiters: SUCCESS");
+	}
+
+	return 0;
 }
 
-static void editor_handle_ctrl_w(Editor* editor) {
+static void editor_move_cursor_to_beginning_of_line(Editor* editor) {
 	editor->cursor.x = 0;
-}
 
-static void editor_handle_ctrl_e(Editor* editor, const Line* line) {
-	size_t indent = line_get_indent(line);
-	editor->cursor.x = indent;
-}
-
-static void editor_handle_ctrl_d(Editor* editor, size_t line_size) {
-	editor->cursor.x = line_size;
-}
-
-static void editor_handle_ctrl_a(Editor* editor) {
-	if (editor->selecting) {
-		selection_clear(&editor->sel);
-		editor->selecting = 0;
-	} else {
-		file_select_all_file(&editor->file, &editor->sel, &editor->cursor);
-		editor->selecting = 1;
-	}	
-}
-
-static void editor_handle_ctrl_l(Editor* editor) {
-	if (editor->sel.active) {
-		selection_clear(&editor->sel);
-		editor->selecting = 0;
-	} else {
-		file_select_line(&editor->file, editor->cursor.y, &editor->sel);
-		editor->selecting = 1;
-	}	
-}
-
-static void editor_handle_ctrl_c(Editor* editor) {
-	if (editor->sel.active) {
-		file_copy_selection(&editor->file, &editor->cb, &editor->sel);
-		selection_clear(&editor->sel);
-		editor->selecting = 0;
-	}	
-}
-
-static void editor_handle_ctrl_v(Editor* editor) {
-	if (editor->cb.text) {
-		file_paste_clipboard(&editor->file, &editor->cb, &editor->cursor);
+	if (editor->debug_mode) {
+		log_write(&editor->log, 
+			"editor_move_cursor_to_beginning_of_line: SUCCESS");
 	}
 }
 
-static void editor_handle_space(Editor* editor) {
+static void editor_move_cursor_to_indent_of_line
+(
+	Editor* editor, 
+	const Line* line
+) 
+{
+	size_t indent = line_get_indent(line);
+	editor->cursor.x = indent;
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, 
+			"editor_move_cursor_to_indent_of_line: SUCCESS");
+	}
+}
+
+static void editor_move_cursor_to_end_of_line
+(
+	Editor* editor, 
+	size_t line_size
+) 
+{
+	editor->cursor.x = line_size;
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, 
+			"editor_move_cursor_to_end_of_line: SUCCESS");
+	}
+}
+
+static int editor_select_all_file(Editor* editor) {
+	if (editor->selecting) {
+		selection_clear(&editor->sel);
+		editor->selecting = 0;
+
+		return 0;
+	} else {
+		int ret = file_select_all_file(&editor->file, &editor->sel, &editor->cursor,
+			&editor->result);
+
+		if (ret < 0) {
+			return ret;
+		}
+
+		if (ret == EIE_NOT_AN_ERROR) {
+			return 0;
+		}
+
+		editor->selecting = 1;
+
+		if (editor->debug_mode) {
+			log_write(&editor->log, "editor_select_all_file: SUCCESS");
+		}
+
+		return 0;
+	}	
+}
+
+static int editor_select_line(Editor* editor) {
+	if (editor->sel.active) {
+		selection_clear(&editor->sel);
+		editor->selecting = 0;
+
+		return 0;
+	} else {
+		int ret = file_select_line(&editor->file, editor->cursor.y, &editor->sel,
+			&editor->result);
+
+		if (ret < 0) {
+			return ret;
+		}
+
+		editor->selecting = 1;
+
+		if (editor->debug_mode) {
+			log_write(&editor->log, "editor_select_line: SUCCESS");
+		}
+
+		return 0;
+	}	
+}
+
+static int editor_copy_selection(Editor* editor) {
+	if (editor->sel.active) {
+		int ret = file_copy_selection(&editor->file, &editor->cb, &editor->sel,
+			&editor->result);
+
+		if (ret < 0) {
+			return ret;
+		}
+
+		if (ret == EIE_NOT_AN_ERROR) {
+			return 0;
+		}
+
+		selection_clear(&editor->sel);
+		editor->selecting = 0;
+	}
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, "editor_copy_selection: SUCCESS");
+	}
+
+	return 0;
+}
+
+static int editor_paste_clipboard(Editor* editor) {
+	if (editor->cb.text) {
+		int ret = file_paste_clipboard(&editor->file, &editor->cb, 
+			&editor->cursor, &editor->result);
+
+		if (ret < 0) {
+			return ret;
+		}
+
+		if (ret == EIE_NOT_AN_ERROR) {
+			return 0;
+		}
+	}
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, "editor_paste_clipboard: SUCCESS");
+	}
+
+	return 0;
+}
+
+static void editor_start_and_create_selection(Editor* editor) {
 	if (editor->selecting) {
 		selection_clear(&editor->sel);
 		editor->selecting = 0;
@@ -297,11 +458,25 @@ static void editor_handle_space(Editor* editor) {
 	}
 }
 
-static void editor_handle_ctrl_s(Editor* editor) {
-	file_save(&editor->file);
+static int editor_save_file(Editor* editor) {
+	int ret = file_save(&editor->file, &editor->result);
+
+	if (ret < 0) {
+		return ret;
+	}
+
+	if (ret == EIE_NOT_AN_ERROR) {
+		return 0;
+	}
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, "editor_save_file: SUCCESS");
+	}
+
+	return 0;
 }
 
-static void editor_handle_arrow_up(Editor* editor) {
+static void editor_move_cursor_up(Editor* editor) {
 	cursor_move_up(&editor->cursor);
 
 	if (editor->selecting) {
@@ -309,7 +484,12 @@ static void editor_handle_arrow_up(Editor* editor) {
 	}
 }
 
-static void editor_handle_arrow_down(Editor* editor, size_t line_count) {
+static void editor_move_cursor_down
+(
+	Editor* editor, 
+	size_t line_count
+) 
+{
 	cursor_move_down(&editor->cursor, line_count);
 
 	if (editor->selecting) {
@@ -317,7 +497,7 @@ static void editor_handle_arrow_down(Editor* editor, size_t line_count) {
 	} 	
 }
 
-static void editor_handle_arrow_right(Editor* editor, size_t line_size) {
+static void editor_move_cursor_right(Editor* editor, size_t line_size) {
 	cursor_move_right(&editor->cursor, line_size);
 
 	if (editor->selecting) {
@@ -325,7 +505,7 @@ static void editor_handle_arrow_right(Editor* editor, size_t line_size) {
 	}       
 }
 
-static void editor_handle_arrow_left(Editor* editor) {
+static void editor_move_cursor_left(Editor* editor) {
 	cursor_move_left(&editor->cursor);
 
 	if (editor->selecting) {
@@ -333,7 +513,7 @@ static void editor_handle_arrow_left(Editor* editor) {
 	}       
 }
 
-static void editor_handle_ctrl_arrow_up(Editor* editor) {
+static void editor_scroll_up(Editor* editor) {
 	if (editor->view.row_offset > 0) {
 		editor->view.row_offset--;
 
@@ -344,7 +524,7 @@ static void editor_handle_ctrl_arrow_up(Editor* editor) {
 	}
 }
 
-static void editor_handle_ctrl_arrow_down(Editor* editor, size_t line_count) {
+static void editor_scroll_down(Editor* editor, size_t line_count) {
 	if (editor->view.row_offset + editor->tsize.rows < line_count) {
 		editor->view.row_offset++;
 
@@ -355,7 +535,7 @@ static void editor_handle_ctrl_arrow_down(Editor* editor, size_t line_count) {
 	}	
 }
 
-static void editor_handle_alt_arrow_up(Editor* editor) {
+static void editor_scroll_up_terminal_size(Editor* editor) {
 	if (editor->view.row_offset > 0) {
 		size_t delta = editor->tsize.rows;
 
@@ -373,7 +553,12 @@ static void editor_handle_alt_arrow_up(Editor* editor) {
 	}
 }
 
-static void editor_handle_alt_arrow_down(Editor* editor, size_t line_count) {
+static void editor_scroll_down_terminal_size
+(
+	Editor* editor, 
+	size_t line_count
+)
+{
 	size_t max_offset = (line_count > editor->tsize.rows) 
 		? line_count - editor->tsize.rows : 0;
 
@@ -393,69 +578,190 @@ static void editor_handle_alt_arrow_down(Editor* editor, size_t line_count) {
 	}
 }
 
-static void editor_handle_ctrl_shift_arrow_up(Editor* editor) {
-	file_move_line_up(&editor->file, &editor->cursor.y);
+static int editor_move_line_up(Editor* editor) {
+	int ret = file_move_line_up(&editor->file, &editor->cursor.y, 
+		&editor->result);
+
+	if (ret < 0) {
+		return ret;
+	}
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, "editor_move_line_up: SUCCESS");
+	}
+
+	return 0;
 }
 
-static void editor_handle_ctrl_shift_arrow_down(Editor* editor) {
-	file_move_line_down(&editor->file, &editor->cursor.y);	
+static int editor_move_line_down(Editor* editor) {
+	int ret = file_move_line_down(&editor->file, &editor->cursor.y, &editor->result);
+
+	if (ret < 0) {
+		return ret;
+	}
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, "editor_move_line_down: SUCCESS");
+	}
+
+	return 0;
 }
 
-static void editor_handle_backspace(Editor* editor) {
+static int editor_delete_char_or_selection(Editor* editor) {
+	int ret;
+
 	if (editor->sel.active) {
 		if (editor->selecting) {
 			editor->selecting = 0;
 		}
 
-		file_delete_selection(&editor->file, &editor->cursor, &editor->sel);
+		ret = file_delete_selection(&editor->file, &editor->cursor,
+			&editor->sel, &editor->result);
+
+		if (ret < 0) {
+			return ret;
+		}
+
+		if (ret == EIE_NOT_AN_ERROR) {
+			return 0;
+		}
+
+		if (editor->debug_mode) {
+			log_write(&editor->log, "editor_delete_char_or_selection: SUCCESS");
+		}
+
+		return 0;
+
 	} else {
 		if (editor->cursor.x > 0) {
-			file_delete_char(&editor->file, &editor->cursor);
+			ret = file_delete_char(&editor->file, &editor->cursor,
+				&editor->result);
+
+			if (ret < 0) {
+				return ret;
+			}
+
+			if (editor->debug_mode) {
+				log_write(&editor->log, "editor_delete_char_or_selection: SUCCESS");
+			}
+
+			return 0;
 		} else if (editor->cursor.y > 0) {
-			file_merge_lines(&editor->file, &editor->cursor);
+			ret = file_merge_lines(&editor->file, &editor->cursor,
+				&editor->result);
+
+			if (ret < 0) {
+				return ret;
+			}
+
+			if (editor->debug_mode) {
+				log_write(&editor->log, "editor_delete_char_or_selection: SUCCESS");
+			}
+
+			return 0;
 		}
 	}
-}
 
-static void editor_handle_tab(Editor* editor) {
-	for (int i = 0; i < TAB_SIZE; i++) {
-		file_insert_char(&editor->file, &editor->cursor, ' ');
+	if (editor->debug_mode) {
+		log_write(&editor->log, "editor_delete_char_or_selection: SUCCESS");
 	}
+
+	return 0;
 }
 
-static void editor_handle_newline(Editor* editor, const Line* line) {
+static int editor_insert_tab(Editor* editor) {
+	int ret;
+
+	for (int i = 0; i < TAB_SIZE; i++) {
+		ret = file_insert_char(&editor->file, &editor->cursor, ' ',
+			&editor->result);
+
+		if (ret < 0) {
+			return ret;
+		}
+	}
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, "editor_insert_tab: SUCCESS");
+	}
+
+	return 0;
+}
+
+static int editor_insert_newline(Editor* editor, const Line* line) {
+	int ret;
 	int is_brace_pair = 
 		(editor->cursor.x > 0 && editor->cursor.x < line->len) &&
 		(line->text[editor->cursor.x - 1] == '{' &&
 		 line->text[editor->cursor.x] == '}');
 
 	int indent = line_get_indent(line);
-	file_insert_newline(&editor->file, &editor->cursor);
+	ret = file_insert_newline(&editor->file, &editor->cursor, &editor->result);
+
+	if (ret < 0) {
+		return ret;
+	}
+
 	editor->cursor.y++;
 	editor->cursor.x = 0;
 
 	if (is_brace_pair) {
 		for (int i = 0; i < indent; i++) {
-			file_insert_char(&editor->file, &editor->cursor, ' ');
+			ret = file_insert_char(&editor->file, &editor->cursor, ' ',
+				&editor->result);
+
+			if (ret < 0) {
+				return ret;
+			}
 		}
 
-		file_insert_newline(&editor->file, &editor->cursor);
+		ret = file_insert_newline(&editor->file, &editor->cursor,
+			&editor->result);
+
+		if (ret < 0) {
+			return ret;
+		}
+
 		editor->cursor.y++;
 
 		Line* closing = vector_get(&editor->file.lines, editor->cursor.y);
+
+		if (!closing) {
+			result_set_reason(&editor->result,
+				"editor_insert_newline: closing is a null pointer");
+			editor->result.type = ERROR_NULL_POINTER;
+
+			return EIE_FATAL_ERROR;
+		}
 
 		line_set_indent(closing, indent);
 		editor->cursor.y--;
 
 		editor->cursor.x = indent;
 		for (int i = 0; i < TAB_SIZE; i++) {
-			file_insert_char(&editor->file, &editor->cursor, ' ');
+			ret = file_insert_char(&editor->file, &editor->cursor, ' ',
+				&editor->result);
+
+			if (ret < 0) {
+				return ret;
+			}
 		}
 	} else {
 		for (int i = 0; i < indent; i++) {
-			file_insert_char(&editor->file, &editor->cursor, ' ');
+			ret = file_insert_char(&editor->file, &editor->cursor, ' ',
+				&editor->result);
+
+			if (ret < 0) {
+				return ret;
+			}
 		}
-	}	
+	}
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, "editor_insert_newline: SUCCESS");
+	}
+
+	return 0;
 }
 
 int editor_handle_input(Editor* editor, int key) {
@@ -464,118 +770,213 @@ int editor_handle_input(Editor* editor, int key) {
 	}
 
 	Line* line = vector_get(&editor->file.lines, editor->cursor.y);
+
+	if (!line) {
+		result_set_reason(&editor->result,
+			"editor_handle_input: line is a null pointer");
+		editor->result.type = ERROR_NULL_POINTER;
+
+		return 0;
+	}
+
 	size_t line_size = line->len;
 	size_t line_count = editor->file.lines.size;
+	int ret;
 
 	switch (key) {
 		case '{':
 		case '(':
 		case '[': {
-			editor_handle_open_delimiters(editor, key);
+			ret = editor_handle_open_delimiters(editor, key);
+
+			if (ret < 0) {
+				result_set_reason(&editor->result,
+					"editor_handle_input: error return by static function");
+
+				editor->result.type = ERROR_STATIC;
+
+				if (ret == EIE_FATAL_ERROR) {
+					return 0;
+				}
+			}
+
 			break;
 		}
 
 		case '}':
 		case ')':
 		case ']': {
-			editor_handle_close_delimiters(editor, line, key);
+			ret = editor_handle_close_delimiters(editor, line, key);
+
+			if (ret < 0) {
+				result_set_reason(&editor->result,
+					"editor_handle_input: error return by static function");
+
+				editor->result.type = ERROR_STATIC;
+
+				if (ret == EIE_FATAL_ERROR) {
+					return 0;
+				}		
+			}
+
 			break;
 		}
 
 		case CTRL_KEY('w'):
-			editor_handle_ctrl_w(editor);
+			editor_move_cursor_to_beginning_of_line(editor);
 			break;
 
 		case CTRL_KEY('e'):
-			editor_handle_ctrl_e(editor, line);
+			editor_move_cursor_to_indent_of_line(editor, line);
 			break;
 
 		case CTRL_KEY('d'):
-			editor_handle_ctrl_d(editor, line_size);
+			editor_move_cursor_to_end_of_line(editor, line_size);
 			break;
 
 		case CTRL_KEY('a'):
-			editor_handle_ctrl_a(editor);
+			int ret = editor_select_all_file(editor);
+
+			if (ret == EIE_FATAL_ERROR) {
+				return 0;
+			}
+
 			break;
 
 		case CTRL_KEY('l'):
-			editor_handle_ctrl_l(editor);
+			ret = editor_select_line(editor);
+
+			if (ret == EIE_FATAL_ERROR) {
+				return 0;
+			}
+
 			break;
 
 		case CTRL_KEY('c'):
-			editor_handle_ctrl_c(editor);
+			ret = editor_copy_selection(editor);
+
+			if (ret == EIE_FATAL_ERROR) {
+				return 0;
+			}
+
 			break;
 
 		case CTRL_KEY('v'):
-			editor_handle_ctrl_v(editor);
+			ret = editor_paste_clipboard(editor);
+
+			if (ret == EIE_FATAL_ERROR) {
+				return 0;
+			}
+
 			break;
 
 		case CTRL_KEY(' '):
-			editor_handle_space(editor);
+			editor_start_and_create_selection(editor);
 			break;
 
 		case CTRL_KEY('s'):
-			editor_handle_ctrl_s(editor);
+			ret = editor_save_file(editor);
+
+			if (ret == EIE_FATAL_ERROR) {
+				return 0;
+			}
+
 			break;
 
 		case '\t':
-			editor_handle_tab(editor);
+			ret = editor_insert_tab(editor);
+
+			if (ret == EIE_FATAL_ERROR) {
+				return 0;
+			}
+
 			break;
 
 		case '\n':
 		case '\r': {
-			editor_handle_newline(editor, line);
+			ret = editor_insert_newline(editor, line);
+
+			if (ret == EIE_FATAL_ERROR) {
+				return 0;
+			}
+
 			break;
 		}
 
 		case 127:
-			editor_handle_backspace(editor);
+			ret = editor_delete_char_or_selection(editor);
+
+			if (ret == EIE_FATAL_ERROR) {
+				return 0;
+			}
+
 			break;
 
 		case KEY_ARROW_UP:
-			editor_handle_arrow_up(editor);
+			editor_move_cursor_up(editor);
 			break;
 
 		case KEY_ARROW_DOWN:
-			editor_handle_arrow_down(editor, line_count);
+			editor_move_cursor_down(editor, line_count);
 			break;
 
 		case KEY_ARROW_RIGHT:
-			editor_handle_arrow_right(editor, line_size);
+			editor_move_cursor_right(editor, line_size);
 			break;
 
 		case KEY_ARROW_LEFT:
-			editor_handle_arrow_left(editor);
+			editor_move_cursor_left(editor);
 			break;
 
 		case KEY_CTRL_ARROW_UP:
-			editor_handle_ctrl_arrow_up(editor);
+			editor_scroll_up(editor);
 			break;
 
 		case KEY_CTRL_ARROW_DOWN:
-			editor_handle_ctrl_arrow_down(editor, line_count);
+			editor_scroll_down(editor, line_count);
 			break;
 
 		case KEY_ALT_ARROW_UP:
-			editor_handle_alt_arrow_up(editor);
+			editor_scroll_up_terminal_size(editor);
 			break;
 
 		case KEY_ALT_ARROW_DOWN:
-			editor_handle_alt_arrow_down(editor, line_count);
+			editor_scroll_down_terminal_size(editor, line_count);
 			break;
 
 		case KEY_CTRL_SHIFT_ARROW_UP:
-			editor_handle_ctrl_shift_arrow_up(editor);
+			ret = editor_move_line_up(editor);
+
+			if (ret == EIE_FATAL_ERROR) {
+				return 0;
+			}
+
 			break;
 
 		case KEY_CTRL_SHIFT_ARROW_DOWN:
-			editor_handle_ctrl_shift_arrow_down(editor);
+			ret = editor_move_line_down(editor);
+
+			if (ret == EIE_FATAL_ERROR) {
+				return 0;
+			}
+
 			break;
 
 		default:
 			if (key >= 32 && key <= 126) {
-				file_insert_char(&editor->file, &editor->cursor, key);
+				ret = file_insert_char(&editor->file, &editor->cursor, 
+					key, &editor->result);
+
+				if (ret == EIE_FATAL_ERROR) {
+					return 0;
+				}
+
+				if (editor->debug_mode) {
+					log_write(&editor->log, 
+						"editor_handle_input: a char has been written (%c)", key);
+				}
 			}
+
 
 			break;
 	}
