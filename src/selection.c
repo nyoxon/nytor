@@ -1,5 +1,7 @@
 #include "selection.h"
 
+// PRE: sel != NULL for all functions
+
 void selection_normalize
 (
 	const Selection* sel,
@@ -21,6 +23,9 @@ void selection_normalize
 	}
 }
 
+
+// PRE: c != NULL
+
 void selection_start(Selection* sel, Cursor* c) {
 	sel->active = 1;
 	sel->start_x = c->x;
@@ -28,6 +33,9 @@ void selection_start(Selection* sel, Cursor* c) {
 	sel->end_x = c->x;
 	sel->end_y = c->y;
 }
+
+
+// PRE: c != NULL
 
 void selection_update(Selection* sel, Cursor* c) {
 	if (!sel->active) {
@@ -37,6 +45,7 @@ void selection_update(Selection* sel, Cursor* c) {
 	sel->end_x = c->x;
 	sel->end_y = c->y;
 }
+
 
 void selection_clear(Selection* sel) {
 	sel->active = 0;

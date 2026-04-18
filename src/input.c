@@ -30,6 +30,10 @@ void enable_raw_mode() {
 	}
 }
 
+
+// since this function is only called when the terminal
+// is in raw mode, the data readout is different
+
 int read_key() {
 	char c;
 

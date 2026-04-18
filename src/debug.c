@@ -4,10 +4,17 @@
 #include <string.h>
 #include <stdio.h>
 
+// PRE: log != NULL
+// PRE: filename != NULL
+
 void log_init(Log* log, const char* filename) {
 	log->fd = open(filename, O_WRONLY | O_TRUNC | O_CREAT, 0644);
 	log->filename = filename;
 }
+
+
+// PRE: log != NULL
+// PRE: fmt != NULL
 
 void log_write(const Log* log, const char* fmt, ...) {
 	if (log->fd < 0) {

@@ -615,6 +615,136 @@ int file_merge_lines(File* file, Cursor* cursor, Result* result) {
 	return 0;
 }
 
+int file_indent_a_line(File* file, Cursor* cursor, Result* result) {
+	if (!file) {
+		result_set_reason(result,
+			"file_indent_a_line: file is a null pointer");
+		result->type = ERROR_NULL_POINTER;
+
+		return EIE_FATAL_ERROR; 
+	}
+
+	if (!cursor) { 
+		result_set_reason(result,
+			"file_indent_a_line: cursor is a null pointer");
+		result->type = ERROR_NULL_POINTER;
+
+		return EIE_FATAL_ERROR; 
+	}
+
+	Line* line = vector_get(&file->lines, cursor->y);
+
+	if (!line) {
+		result_set_reason(result,
+			"file_indent_a_line: line is a null pointer");
+		result->type = ERROR_NULL_POINTER;
+
+		return EIE_NOT_FATAL_ERROR;
+	}
+
+	size_t new_len = TAB_SIZE + line->len;
+	char* new_text = malloc(new_len + 1);
+
+	if (!new_text) {
+		result_set_reason(result,
+			"file_indent_a_line: new_text is a null pointer");
+		result->type = ERROR_MALLOC;
+
+		return EIE_NOT_FATAL_ERROR;
+	}
+
+	for (size_t i = 0; i < TAB_SIZE; i++) {
+		cursor->x++;
+		new_text[i] = ' ';
+	}
+
+	memcpy(new_text + TAB_SIZE, line->text, line->len);
+	new_text[new_len] = '\0';
+
+	line_replace(line, new_text, new_len);
+
+	result_ok(result);
+	file->dirty = 1;
+
+	return 0;
+}
+
+int file_unindent_a_line(File* file, Cursor* cursor, Result* result) {
+	if (!file) {
+		result_set_reason(result,
+			"file_unindent_a_line: file is a null pointer");
+		result->type = ERROR_NULL_POINTER;
+
+		return EIE_FATAL_ERROR; 
+	}
+
+	if (!cursor) { 
+		result_set_reason(result,
+			"file_unindent_a_line: cursor is a null pointer");
+		result->type = ERROR_NULL_POINTER;
+
+		return EIE_FATAL_ERROR; 
+	}
+
+	Line* line = vector_get(&file->lines, cursor->y);
+
+	if (!line) {
+		result_set_reason(result,
+			"file_unindent_a_line: line is a null pointer");
+		result->type = ERROR_NULL_POINTER;
+
+		return EIE_NOT_FATAL_ERROR;
+	}
+
+	size_t indent = line_get_indent(line);
+
+	if (!indent) {
+		return EIE_NOT_AN_ERROR;
+	}
+
+	size_t remaining_indent = (indent >= TAB_SIZE) ?
+		(indent - TAB_SIZE) : 0;
+
+	size_t new_len = line->len - indent + remaining_indent;
+	char* new_text = malloc(new_len + 1);
+
+	if (!new_text) {
+		result_set_reason(result,
+			"file_unindent_a_line: new_text is a null pointer");
+		result->type = ERROR_MALLOC;
+
+		return EIE_NOT_FATAL_ERROR;
+	}
+
+	for (size_t i = 0; i < remaining_indent; i++) {
+		new_text[i] = ' ';
+	}
+
+	memcpy(new_text + remaining_indent, line->text + indent,
+		new_len - remaining_indent);
+	new_text[new_len] = '\0';
+
+	line_replace(line, new_text, new_len);
+
+	size_t move_cursor = TAB_SIZE;
+	if (cursor->x >= indent) {
+		if (indent < TAB_SIZE) {
+			move_cursor = indent;
+		}
+
+		for (size_t i = 0; i < move_cursor; i++) {
+			cursor->x--;
+		}
+	} else {
+		cursor->x = 0;
+	}
+
+	result_ok(result);
+	file->dirty = 1;
+
+	return 0;	
+}
+
 int file_move_line_up(File* file, size_t* y, Result* result) {
 	if (!file) {
 		result_set_reason(result,
@@ -625,11 +755,7 @@ int file_move_line_up(File* file, size_t* y, Result* result) {
 	}
 
 	if (*y == 0) {
-		result_set_reason(result,
-			"file_move_line_up: *y == 0");
-		result->type = ERROR_INDEX_OUT_OF_BOUNDS;
-
-		return EIE_NOT_FATAL_ERROR;
+		return EIE_NOT_AN_ERROR;
 	}
 
 	int ret = vector_swap(&file->lines, *y, *y - 1);
@@ -661,11 +787,7 @@ int file_move_line_down(File* file, size_t* y, Result* result) {
 	}
 
 	if (*y >= file->lines.size - 1) {
-		result_set_reason(result,
-			"file_move_line_down: *y >= file->lines.size - 1");
-		result->type = ERROR_INDEX_OUT_OF_BOUNDS;
-
-		return EIE_NOT_FATAL_ERROR;
+		return EIE_NOT_AN_ERROR;
 	}
 
 	int ret = vector_swap(&file->lines, *y, *y + 1);
@@ -683,6 +805,129 @@ int file_move_line_down(File* file, size_t* y, Result* result) {
 	file->dirty = 1;
 
 	result_ok(result);
+
+	return 0;
+}
+
+int file_comment_line
+(
+	File* file, 
+	Cursor* cursor, 
+	int move_cursor,
+	int force_comment_or_discomment,
+	Result* result
+) {
+	if (!file) {
+		result_set_reason(result,
+			"file_comment_line: file is a null pointer");
+		result->type = ERROR_NULL_POINTER;
+
+		return EIE_FATAL_ERROR; 
+	}
+
+	if (!cursor) {
+		result_set_reason(result,
+			"file_comment_line: cursor is a null pointer");
+		result->type = ERROR_NULL_POINTER;
+
+		return EIE_FATAL_ERROR; 
+	}
+
+	Line* line = vector_get(&file->lines, cursor->y);
+
+	if (!line) {
+		result_set_reason(result,
+			"file_comment_line: line is a null pointer");
+		result->type = ERROR_NULL_POINTER;
+
+		return EIE_NOT_FATAL_ERROR;
+	}
+
+	size_t indent = line_get_indent(line);
+	size_t comment_fmt_len = strlen(COMMENT_FMT);
+	size_t cursor_increment = 0;
+	int is_comment = line_is_comment(line, indent);
+
+	if (force_comment_or_discomment == 0 || !is_comment)
+	{
+		size_t new_len = line->len + comment_fmt_len + 1; // + ' ';
+		char* new_text = malloc(new_len + 1);
+
+		if (!new_text) {
+			result_set_reason(result,
+				"file_comment_line: line is a null pointer");
+			result->type = ERROR_MALLOC;
+
+			return EIE_NOT_FATAL_ERROR;
+		}
+
+		for (size_t i = 0; i < indent; i++) {
+			new_text[i] = ' ';
+		}
+
+		memcpy(new_text + indent, COMMENT_FMT, comment_fmt_len);
+		memcpy(new_text + indent + comment_fmt_len, " ", 1);
+		memcpy(new_text + indent + comment_fmt_len + 1,
+			line->text + indent, line->len - indent);
+		new_text[new_len] = '\0';
+
+		line_replace(line, new_text, new_len);
+
+		int normalize_cursor = (cursor->x < indent) ?
+			1 : 0;
+
+		size_t cursor_normalizer = (normalize_cursor) ?
+			indent - cursor->x : 0;
+
+		if (move_cursor) {
+			cursor_increment = comment_fmt_len + 1;
+			cursor->x += cursor_increment + cursor_normalizer;
+		}
+	} 
+
+	if (force_comment_or_discomment == 1 || is_comment){
+		int has_space_after_comment_fmt = 
+			(indent + comment_fmt_len >= line->len) ?
+			0 : (line->text[indent + comment_fmt_len] == ' ') ?
+			1 : 0;
+
+		size_t new_len = (has_space_after_comment_fmt) ?
+			line->len - comment_fmt_len - 1 :
+			line->len - comment_fmt_len;
+
+		size_t i = (has_space_after_comment_fmt) ?
+			indent + comment_fmt_len + 1 :
+			indent + comment_fmt_len;
+
+		char* new_text = malloc(new_len + 1);
+
+		if (!new_text) {
+			result_set_reason(result,
+				"file_comment_line: line is a null pointer");
+			result->type = ERROR_MALLOC;
+
+			return EIE_NOT_FATAL_ERROR;
+		}
+
+		for (size_t i = 0; i < indent; i++) {
+			new_text[i] = ' ';
+		}
+
+		memcpy(new_text + indent, line->text + i, new_len - indent);
+		new_text[new_len] = '\0';
+
+		line_replace(line, new_text, new_len);
+
+		if (move_cursor) {
+			cursor_increment = (has_space_after_comment_fmt) ?
+				(comment_fmt_len + 1) : (comment_fmt_len);
+
+			cursor->x -= cursor_increment;
+		}
+	}
+
+	result_ok(result);
+	file->dirty = 1;
 
 	return 0;
 }

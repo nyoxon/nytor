@@ -1,6 +1,11 @@
 #ifndef CURSOR_H
 #define CURSOR_H
 
+// definition of a Cursor and functions to handle it
+
+// a Cursor must be a logical representation of
+// the cursor that is rendered on terminal
+
 #include <stddef.h>
 
 typedef struct {

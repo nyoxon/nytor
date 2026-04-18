@@ -1,11 +1,101 @@
 #include "editor.h"
+#include "input.h"
 #include <unistd.h>
 #include <stdio.h>
 #include <string.h>
-#include "input.h"
+#include <assert.h>
 
 #define DEFAULT_TERMINAL_WIDTH 50
 #define DEFAULT_TERMINAL_HEIGHT 24
+
+const char* KEYWORDS[] = {
+	"int", 
+	"void",
+	"float",
+	"double",
+	"short",
+	"long",
+	"char",
+	"unsigned",
+	"signed",
+	"struct",
+	"typedef",
+	"auto",
+	"enum",
+	"union",
+
+	"extern",
+	"static",
+	"const",
+	"sizeof",
+	"volatile",
+	"inline",
+	"restrict",
+
+	"return", 
+	"if", 
+	"else", 
+	"for", 
+	"case",
+	"while",
+	"continue",
+	"break",
+	"default",
+	"do",
+	"goto",
+	"register",
+	"switch"
+};
+
+const char* COLORS[] = {
+	TYPE_COLOR,
+	TYPE_COLOR,
+	TYPE_COLOR, 
+	TYPE_COLOR,
+	TYPE_COLOR,
+	TYPE_COLOR,
+	TYPE_COLOR,
+	TYPE_COLOR,
+	TYPE_COLOR,
+	TYPE_COLOR,
+	TYPE_COLOR,
+	TYPE_COLOR,
+	TYPE_COLOR,
+	TYPE_COLOR,
+
+	SPECIFIER_COLOR,
+	SPECIFIER_COLOR,
+	SPECIFIER_COLOR,
+	SPECIFIER_COLOR,
+	SPECIFIER_COLOR,
+	SPECIFIER_COLOR,
+	SPECIFIER_COLOR,
+
+	FLOW_COLOR,
+	FLOW_COLOR,
+	FLOW_COLOR,
+	FLOW_COLOR,
+	FLOW_COLOR,
+	FLOW_COLOR,
+	FLOW_COLOR,
+	FLOW_COLOR,
+	FLOW_COLOR,
+	FLOW_COLOR,
+	FLOW_COLOR,
+	FLOW_COLOR,
+	FLOW_COLOR,
+
+	NUMBER_COLOR,
+	FUNCTION_COLOR,
+	MACRO_COLOR
+};
+
+const char* MACROS[] = {
+	"#include",
+	"#define",
+	"#ifndef",
+	"#endif"
+};
 
 int editor_init
 (
@@ -136,12 +226,67 @@ static void index_line(size_t y, size_t line_count) {
 	write(STDOUT_FILENO, "\033[0m", 4);
 }
 
+static int is_keyword(const char* word, size_t len, int* index) {
+	for (size_t i = 0; i < KEYWORD_COUNT; i++) {
+		if (strlen(KEYWORDS[i]) == len &&
+			strncmp(word, KEYWORDS[i], len) == 0)
+		{
+			*index = (int) i;
+			return 1;
+		}
+	}
+
+	return 0;
+}
+
+static int check_is_macro(const char* word, size_t len) {
+	for (size_t i = 0; i < MACROS_COUNT; i++) {
+		if (strlen(MACROS[i]) == len &&
+			strncmp(word, MACROS[i], len) == 0)
+		{
+			return 1;
+		}
+	}
+
+	return 0;	
+}
+
+static int is_word_char(char c) {
+	return (c >= 'a' && c <= 'z') ||
+		   (c >= 'A' && c <= 'Z') ||
+		   (c >= '0' && c <= '9') ||
+		   (c == '_');
+}
+
+static int is_digit(char c) {
+	return (c >= '0' && c <= '9');
+}
+
+static void write_color(const char* color) {
+	write(STDOUT_FILENO, color, COLOR_SIZE);
+}
+
+static void invert_color() {
+	write(STDOUT_FILENO, "\033[7m", 4);
+}
+
+static void reset_color() {
+	write(STDOUT_FILENO, "\033[0m", 4);
+}
+
 void editor_render(Editor* editor) {
 	clean_terminal();
 	write(STDOUT_FILENO, "\033[H", 3);
 
 	size_t screen_rows = editor->tsize.rows;
 	size_t screen_cols = editor->tsize.cols;
+
+	size_t start_comment_len = strlen(START_BLOCK_COMMENT);
+	size_t end_comment_len = strlen(END_BLOCK_COMMENT);
+	size_t comment_len = strlen(COMMENT_FMT);
+
+	// if the actual character belongs to a block comment
+	int in_block_comment = 0;
 
 	size_t x1 = 0, y1 = 0, x2 = 0, y2 = 0;
 
@@ -156,11 +301,39 @@ void editor_render(Editor* editor) {
 			break;
 		}
 
-		Line* line = vector_get(&editor->file.lines, file_row);
+		const Line* line = vector_get(&editor->file.lines, file_row);
 
 		if (editor->render_line_enumeration) {
 			index_line(file_row, editor->file.lines.size);
 		}
+
+		if (line->len == 0 && editor->sel.active && 
+		   ((editor->sel.start_y <= y &&
+			 y <= editor->sel.end_y) ||
+		     (editor->sel.end_y <= y &&
+		     y <= editor->sel.start_y)))
+		{
+			invert_color();
+			write(STDOUT_FILENO, " ", 1);
+			reset_color();
+		}
+
+		size_t indent = line_get_indent(line);
+
+		// just useful when the entire line is a comment
+		int is_comment = line_is_comment(line, indent);
+
+		// if the actual char belongs to a comment and the
+		// line is not a comment
+		int in_comment = 0;
+
+		// if the actual word starts with digit
+		int start_with_digit = 0;
+		int is_function = 0;
+		int is_macro = 0;
+
+		// if the actual character belongs to a keyword
+		int in_keyword = 0;
 
 		size_t start = editor->view.col_offset;
 		size_t end = start + screen_cols;
@@ -173,30 +346,251 @@ void editor_render(Editor* editor) {
 			end = line->len;
 		}
 
+		in_comment = 0;
 		int in_selection = 0;
+		int keyword_index = -1;
+
+		if (in_block_comment || is_comment) {
+			write_color(COMMENT_COLOR);
+		}
 
 		/*inefficient, since it iterates over all the chars 
 		on the planet (see alternative later)*/
+
+		/*
+		i don't understand exactly how i'm managing to render
+		blocks of code in the color they should be.
+		i just changed things here, things there until it finally
+		worked out :D
+		*/
+
 		for (size_t x = start; x < end; x++) {
-			int selected = is_selected(&editor->sel, x, file_row, x1, y1, x2, y2);
+			// log_write(&editor->log, "%ld %ld", y, in_block_comment);
+			int selected = is_selected(&editor->sel, x, 
+				file_row, x1, y1, x2, y2);
 
 			if (selected && !in_selection) {
-				write(STDOUT_FILENO, "\033[7m", 4);
+				invert_color();
 				in_selection = 1;
 			}
 
+			if (selected && 
+			   (in_keyword ||
+			    is_comment)) 
+			{
+				reset_color();
+				invert_color();
+			}
+
 			if (!selected && in_selection) {
-				write(STDOUT_FILENO, "\033[0m", 4);
+				reset_color();
 				in_selection = 0;
 			}
 
-			write(STDOUT_FILENO, &line->text[x], 1);
+			if (selected) {
+				goto render;
+			}
+
+			if (!in_comment &&
+				!is_comment &&
+				!in_block_comment &&
+				line->text[x] == START_BLOCK_COMMENT[0] && 
+				end >= start_comment_len &&
+				x <= end - start_comment_len) 
+			{
+				size_t is_block = 1;
+
+				for (size_t j = x; j < x + start_comment_len; j++) {
+					if (line->text[j] != START_BLOCK_COMMENT[j - x]) {
+						is_block = 0;
+						break;
+					}
+				}
+
+				if (is_block) {
+					write_color(COMMENT_COLOR);
+					in_block_comment = 1;
+
+					goto render;
+				}
+			}
+
+			// in_block_comment == 1 iff !is_comment, !in_comment etc
+			if (in_block_comment &&
+				line->text[x] == END_BLOCK_COMMENT[end_comment_len - 1] && 
+				x >= end_comment_len - 1) 
+			{
+				size_t end_block = 1;
+
+				for (size_t j = x, i = 1; j > x - end_comment_len; j--, i++) {
+					if (line->text[j] != END_BLOCK_COMMENT[end_comment_len - i]) {
+						end_block = 0;
+						break;
+					}
+				}
+
+				if (end_block) {
+					in_block_comment = 0;
+					write(STDOUT_FILENO, &line->text[x], 1);
+					reset_color();
+
+					continue;
+				}
+			}
+
+			if (!in_comment &&
+				!is_comment &&
+				!in_block_comment &&
+				line->text[x] == COMMENT_FMT[0] &&
+				end >= comment_len &&
+				x <= end - comment_len)
+			{
+				size_t comment = 1;
+
+				for (size_t j = x; j < x + comment_len; j++) {
+					if (line->text[j] != COMMENT_FMT[j - x]) {
+						comment = 0;
+						break;
+					}
+				}
+
+				if (comment) {
+					write_color(COMMENT_COLOR);
+					in_comment = 1;
+				}
+			}
+
+			if (!in_block_comment &&
+				!is_comment &&
+				!in_keyword && 
+				is_word_char(line->text[x]))
+			{
+				if (x > 0 && is_word_char(line->text[x - 1])) {
+					goto render;
+				}
+
+				if (is_digit(line->text[x])) {
+					keyword_index = KEYWORD_COUNT;
+					start_with_digit = 1;
+					in_keyword = 1;
+
+					goto render;
+				}
+
+				size_t i = x;
+
+				while (i < line->len && is_word_char(line->text[i])) {
+					i++;
+				}
+
+				if (end - i >= 2) {
+					if (line->text[i] == '(') {
+						is_function = 1;
+
+						keyword_index = KEYWORD_COUNT + 1;
+						in_keyword = 1;
+
+						goto render;
+					}
+				}
+
+				size_t len = i - x;
+
+				if (is_keyword(&line->text[x], len, &keyword_index)) {
+					in_keyword = 1;
+				}
+			}
+
+			if (!in_block_comment &&
+				!is_comment && 
+				!is_word_char(line->text[x])) 
+			{
+				if (in_keyword) {
+					if (start_with_digit && line->text[x] == '.') {
+						goto render;
+					}
+
+					if (is_function && 
+					   (line->text[x] == '(')) 
+					{
+						reset_color();
+						in_keyword = 0;
+						keyword_index = -1;
+
+						goto render;
+					}
+
+					if (start_with_digit) {
+						start_with_digit = 0;
+					}
+
+					if (is_macro) {
+						is_macro = 0;
+					}
+
+					reset_color();
+					in_keyword = 0;
+					keyword_index = -1;
+				} else {
+					if (line->text[x] == MACRO_FMT) {
+						if (x != indent) {
+							goto render;
+						}
+						
+						size_t i = x + 1;
+
+						while (i < line->len &&
+							is_word_char(line->text[i])) 
+						{
+							i++;
+						}
+
+						size_t len = i - x;		
+
+						if (check_is_macro(&line->text[x], 
+							len)) 
+						{
+							keyword_index = KEYWORD_COUNT + 2;
+							is_macro = 1;
+							in_keyword = 1;
+						}
+					}					
+				}
+			}
+
+			render:
+				if (!selected && !in_block_comment && !is_comment 
+					&& in_keyword && keyword_index >= 0) 
+				{
+					if (!is_function) {
+						write_color(COLORS[keyword_index]);
+					} else {
+						if (line->text[x] != '(') 
+						{
+							write_color(COLORS[keyword_index]);	
+						}
+					}
+				}
+
+				if (start_with_digit && !is_digit(line->text[x])) {
+					if (line->text[x] != '.') {
+						invert_color();
+					}
+				}
+
+				write(STDOUT_FILENO, &line->text[x], 1);
+
+				if (start_with_digit && !is_digit(line->text[x])) {
+					if (line->text[x] != '.') {
+						reset_color();
+					}
+				}
 		}
 
 		write(STDOUT_FILENO, "\n", 1);
 
-		if (in_selection) {
-			write(STDOUT_FILENO, "\033[0m", 4);
+		if (in_selection || is_comment) {
+			reset_color();
 		}
 	}
 
@@ -281,7 +675,8 @@ static int editor_handle_open_delimiters(Editor* editor, int key) {
 	editor->cursor.x--;
 
 	if (editor->debug_mode) {
-		log_write(&editor->log, "editor_handle_open_delimiters: SUCCESS");
+		log_write(&editor->log, 
+			"editor_handle_open_delimiters: SUCCESS");
 	}
 
 	return 0;
@@ -295,7 +690,7 @@ static int editor_handle_close_delimiters
 ) 
 {
 	if (editor->cursor.x < line->len &&
-	 	line->text[editor->cursor.x] == key) {
+		line->text[editor->cursor.x] == key) {
 		editor->cursor.x++;
 	} else {
 		int ret = file_insert_char(&editor->file, &editor->cursor, key,
@@ -307,7 +702,8 @@ static int editor_handle_close_delimiters
 	}
 
 	if (editor->debug_mode) {
-		log_write(&editor->log, "editor_handle_close_delimiters: SUCCESS");
+		log_write(&editor->log, 
+			"editor_handle_close_delimiters: SUCCESS");
 	}
 
 	return 0;
@@ -315,6 +711,10 @@ static int editor_handle_close_delimiters
 
 static void editor_move_cursor_to_beginning_of_line(Editor* editor) {
 	editor->cursor.x = 0;
+
+	if (editor->sel.active) {
+		editor->sel.end_x = 0;
+	}
 
 	if (editor->debug_mode) {
 		log_write(&editor->log, 
@@ -331,6 +731,10 @@ static void editor_move_cursor_to_indent_of_line
 	size_t indent = line_get_indent(line);
 	editor->cursor.x = indent;
 
+	if (editor->sel.active) {
+		editor->sel.end_x = indent;
+	}
+
 	if (editor->debug_mode) {
 		log_write(&editor->log, 
 			"editor_move_cursor_to_indent_of_line: SUCCESS");
@@ -344,6 +748,10 @@ static void editor_move_cursor_to_end_of_line
 ) 
 {
 	editor->cursor.x = line_size;
+
+	if (editor->sel.active) {
+		editor->sel.end_x = line_size;
+	}
 
 	if (editor->debug_mode) {
 		log_write(&editor->log, 
@@ -455,6 +863,11 @@ static void editor_start_and_create_selection(Editor* editor) {
 	} else {
 		selection_start(&editor->sel, &editor->cursor);
 		editor->selecting = 1;
+
+		if (editor->debug_mode) {
+			log_write(&editor->log, 
+				"editor_start_and_create_selection: SUCCESS");
+		}
 	}
 }
 
@@ -482,6 +895,10 @@ static void editor_move_cursor_up(Editor* editor) {
 	if (editor->selecting) {
 		selection_update(&editor->sel, &editor->cursor);
 	}
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, "editor_move_cursor_up: SUCCESS");
+	}
 }
 
 static void editor_move_cursor_down
@@ -494,7 +911,11 @@ static void editor_move_cursor_down
 
 	if (editor->selecting) {
 		selection_update(&editor->sel, &editor->cursor);
-	} 	
+	}
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, "editor_move_cursor_down: SUCCESS");
+	}	
 }
 
 static void editor_move_cursor_right(Editor* editor, size_t line_size) {
@@ -502,7 +923,11 @@ static void editor_move_cursor_right(Editor* editor, size_t line_size) {
 
 	if (editor->selecting) {
 		selection_update(&editor->sel, &editor->cursor);
-	}       
+	}
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, "editor_move_cursor_right: SUCCESS");
+	}   
 }
 
 static void editor_move_cursor_left(Editor* editor) {
@@ -510,7 +935,11 @@ static void editor_move_cursor_left(Editor* editor) {
 
 	if (editor->selecting) {
 		selection_update(&editor->sel, &editor->cursor);
-	}       
+	}
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, "editor_move_cursor_left: SUCCESS");
+	}    
 }
 
 static void editor_scroll_up(Editor* editor) {
@@ -520,6 +949,10 @@ static void editor_scroll_up(Editor* editor) {
 		if (editor->cursor.y > editor->view.row_offset + editor->tsize.rows - 1) {
 			editor->cursor.y--;
 			editor->cursor.x = 0;
+		}
+
+		if (editor->debug_mode) {
+			log_write(&editor->log, "editor_scroll_up: SUCCESS");
 		}
 	}
 }
@@ -531,6 +964,11 @@ static void editor_scroll_down(Editor* editor, size_t line_count) {
 		if (editor->cursor.y < editor->view.row_offset) {
 			editor->cursor.y++;
 			editor->cursor.x = 0;
+		}
+
+		if (editor->debug_mode) {
+			log_write(&editor->log, 
+				"editor_scroll_down: SUCCESS");
 		}
 	}	
 }
@@ -549,6 +987,11 @@ static void editor_scroll_up_terminal_size(Editor* editor) {
 			editor->cursor.y -= delta;
 		} else {
 			editor->cursor.y = 0;
+		}
+
+		if (editor->debug_mode) {
+			log_write(&editor->log, 
+				"editor_scroll_up_terminal_size: SUCCESS");
 		}
 	}
 }
@@ -575,36 +1018,257 @@ static void editor_scroll_down_terminal_size
 		if (editor->cursor.y >= line_count) {
 			editor->cursor.y = line_count - 1;
 		}
+
+		if (editor->debug_mode) {
+			log_write(&editor->log, 
+				"editor_scroll_down_terminal_size: SUCCESS");
+		}
 	}
 }
 
-static int editor_move_line_up(Editor* editor) {
-	int ret = file_move_line_up(&editor->file, &editor->cursor.y, 
-		&editor->result);
+static int editor_move_line_or_selection_up(Editor* editor) {
+	int ret;
 
-	if (ret < 0) {
-		return ret;
+	if (!editor->sel.active) {
+		ret = file_move_line_up(&editor->file, &editor->cursor.y, 
+			&editor->result);
+
+		if (ret < 0) {
+			return ret;
+		}
+
+		if (editor->debug_mode) {
+			log_write(&editor->log, 
+				"editor_move_line_or_selection_up: SUCCESS");
+		}
+
+		return 0;
+	} else {
+		size_t x1, y1, x2, y2;
+		selection_normalize(&editor->sel, &x1, &y1, &x2, &y2);
+
+		if (y1 == 0) {
+			if (editor->debug_mode) {
+				log_write(&editor->log, 
+					"editor_move_line_or_selection_up: y1 == 0 (NOT A ERROR)");
+			}
+
+			return 0;
+		}
+
+		editor->cursor.y = y1;
+
+		for (size_t i = 0; i < (y2 - y1 + 1); i++) {
+			ret = file_move_line_up(&editor->file, &editor->cursor.y,
+				&editor->result);
+
+			if (ret < 0) {
+				return EIE_FATAL_ERROR;
+			}
+
+			editor->cursor.y = y1 + (i + 1);
+		}
+
+		if (y1 > 0) {
+			y1 -= 1;
+			y2 -= 1;
+		}
+
+		if (editor->sel.start_y < editor->sel.end_y ||
+		   (editor->sel.start_y == editor->sel.end_y &&
+			editor->sel.start_x <= editor->sel.end_x)) {
+
+			editor->cursor.y = y2;
+
+			editor->sel.start_x = x1;
+			editor->sel.start_y = y1;
+			editor->sel.end_x = x2;
+			editor->sel.end_y = y2;
+		} else {
+			editor->cursor.y = y1;
+
+			editor->sel.start_x = x2;
+			editor->sel.start_y = y2;
+			editor->sel.end_x = x1;
+			editor->sel.end_y = y1;
+		}		
+
+		if (editor->debug_mode) {
+			log_write(&editor->log,
+				"editor_move_line_or_selection_up: SUCCESS");
+		}
+
+		return 0;
 	}
-
-	if (editor->debug_mode) {
-		log_write(&editor->log, "editor_move_line_up: SUCCESS");
-	}
-
-	return 0;
 }
 
-static int editor_move_line_down(Editor* editor) {
-	int ret = file_move_line_down(&editor->file, &editor->cursor.y, &editor->result);
+static int editor_move_line_or_selection_down(Editor* editor) {
+	int ret;
 
-	if (ret < 0) {
-		return ret;
+	if (!editor->sel.active) {
+		ret = file_move_line_down(&editor->file, &editor->cursor.y, 
+			&editor->result);
+
+		if (ret < 0) {
+			return ret;
+		}
+
+		if (editor->debug_mode) {
+			log_write(&editor->log, 
+				"editor_move_line_or_selection_down: SUCCESS");
+		}
+
+		return 0;
+	} else {
+		size_t x1, y1, x2, y2;
+		selection_normalize(&editor->sel, &x1, &y1, &x2, &y2);
+
+		if (y2 >= editor->file.lines.size - 1) {
+			if (editor->debug_mode) {
+				log_write(&editor->log,
+			"editor_move_line_or_selection_down: y2 >= lines.size - 1 (NOT A ERROR)");
+			}
+
+			return 0;
+		}
+
+		editor->cursor.y = y2;
+
+		for (size_t i = 0; i < (y2 - y1 + 1); i++) {
+			ret = file_move_line_down(&editor->file, &editor->cursor.y,
+				&editor->result);
+
+			if (ret < 0) {
+				return EIE_FATAL_ERROR;
+			}
+
+			editor->cursor.y = y2 - (i + 1);
+		}
+
+		if (y2 < editor->file.lines.size -1) {
+			y1 += 1;
+			y2 += 1;
+		}
+
+		if (editor->sel.start_y < editor->sel.end_y ||
+		   (editor->sel.start_y == editor->sel.end_y &&
+			editor->sel.start_x <= editor->sel.end_x)) {
+
+			editor->cursor.y = y2;
+
+			editor->sel.start_x = x1;
+			editor->sel.start_y = y1;
+			editor->sel.end_x = x2;
+			editor->sel.end_y = y2;
+		} else {
+			editor->cursor.y = y1;
+
+			editor->sel.start_x = x2;
+			editor->sel.start_y = y2;
+			editor->sel.end_x = x1;
+			editor->sel.end_y = y1;
+		}
+
+		if (editor->debug_mode) {
+			log_write(&editor->log, 
+				"editor_move_line_or_selection_down: SUCCESS");
+		}
+
+		return 0;
 	}
+}
 
-	if (editor->debug_mode) {
-		log_write(&editor->log, "editor_move_line_down: SUCCESS");
+static int editor_comment_line_or_selection(Editor* editor) {
+	int ret;
+
+	if (!editor->sel.active) {
+		ret = file_comment_line(&editor->file, &editor->cursor,
+			1, -1, &editor->result);
+
+		if (ret < 0) {
+			return ret;
+		}
+
+		if (editor->debug_mode) {
+			log_write(&editor->log,
+				"editor_comment_line_or_selection: SUCCESS");
+		}
+
+		return 0;
+	} else {
+		size_t x1, y1, x2, y2;
+		selection_normalize(&editor->sel, &x1, &y1, &x2, &y2);
+		size_t start_cursor_x = editor->cursor.x;
+		size_t start_cursor_y = editor->cursor.y;
+
+		int all_lines_are_comments = 1;
+
+		for (size_t i = y1; i <= y2; i++) {
+			const Line* line = vector_get(&editor->file.lines, i);
+
+			if (!line) {
+				result_set_reason(&editor->result,
+					"editor_comment_line_or_selection: line is a null pointer");
+				editor->result.type = ERROR_NULL_POINTER;
+
+				return EIE_FATAL_ERROR;
+			}
+
+			size_t indent = line_get_indent(line);
+
+			if (!line_is_comment(line, indent)) {
+				all_lines_are_comments = 0;
+				break;
+			}
+		}
+
+		editor->cursor.y = y1;
+
+		for (size_t i = 0; i <= (y2 - y1); i++) {
+			ret = file_comment_line(&editor->file, &editor->cursor,
+				editor->cursor.y == start_cursor_y,
+				all_lines_are_comments,
+				&editor->result);
+
+			if (ret < 0) {
+				return EIE_FATAL_ERROR;
+			}
+
+			editor->cursor.y++;
+		}
+
+		int cursor_increment = (int) editor->cursor.x -
+			(int) start_cursor_x;
+
+		if (cursor_increment > 0) {
+			cursor_increment = strlen(COMMENT_FMT) + 1;
+		}
+
+		x1 += cursor_increment;
+		x2 += cursor_increment;
+
+		if (editor->sel.start_y < editor->sel.end_y ||
+		   (editor->sel.start_y == editor->sel.end_y &&
+			editor->sel.start_x <= editor->sel.end_x)) {
+
+			editor->cursor.y = y2;
+
+			editor->sel.start_x = x1;
+			editor->sel.end_x = editor->cursor.x;
+		} else {
+			editor->cursor.y = y1;
+
+			editor->sel.start_x = x2;
+			editor->sel.end_x = x1;
+		}
+
+		if (editor->debug_mode) {
+			log_write(&editor->log, 
+				"editor_move_line_or_selection_down: SUCCESS");
+		}
+
+		return 0;
 	}
-
-	return 0;
 }
 
 static int editor_delete_char_or_selection(Editor* editor) {
@@ -686,6 +1350,174 @@ static int editor_insert_tab(Editor* editor) {
 	}
 
 	return 0;
+}
+
+static int editor_indent_selection_or_line(Editor* editor) {
+	int ret;
+
+	if (!editor->sel.active) {
+		ret = file_indent_a_line(&editor->file, &editor->cursor,
+			&editor->result);
+
+		if (ret < 0) {
+			return ret;
+		}
+
+		if (editor->debug_mode) {
+			log_write(&editor->log, "editor_indent_a_line: SUCCESS");
+		}
+
+		return 0;
+	} else {
+		size_t x1, x2, y1, y2;
+		selection_normalize(&editor->sel, &x1, &y1, &x2, &y2);
+
+		editor->cursor.y = y1;
+
+		for (size_t i = 0; i <= (y2 - y1); i++) {
+			ret = file_indent_a_line(&editor->file, &editor->cursor,
+				&editor->result);
+
+			if (ret < 0) {
+				editor->cursor.y = y1;
+				editor->cursor.x = x1;
+				return EIE_FATAL_ERROR;
+			}	
+
+			editor->cursor.y++;
+			editor->cursor.x = x1;
+		}
+
+		x1 += TAB_SIZE;
+		x2 += TAB_SIZE;
+
+		if (editor->sel.start_y < editor->sel.end_y ||
+		   (editor->sel.start_y == editor->sel.end_y &&
+			editor->sel.start_x <= editor->sel.end_x)) {
+
+			editor->cursor.y = y2;
+			editor->cursor.x = x2;
+
+			editor->sel.start_x = (editor->sel.start_x == 0) ?
+				0 : x1;
+			editor->sel.start_y = y1;
+			editor->sel.end_x = x2;
+			editor->sel.end_y = y2;
+		} else {
+			editor->cursor.y = y1;
+			editor->cursor.x = x1;
+
+			editor->sel.start_x = x2;
+			editor->sel.start_y = y2;
+			editor->sel.end_x = (editor->sel.end_x == 0) ?
+				0: x1;
+			editor->sel.end_y = y1;
+		}
+
+		if (editor->debug_mode) {
+			log_write(&editor->log, "editor_indent_a_line: SUCCESS");
+		}
+
+		return 0;
+	}
+}
+
+static int editor_unindent_selection_or_line(Editor* editor) {
+	int ret;
+
+	if (!editor->sel.active) {
+		ret = file_unindent_a_line(&editor->file, &editor->cursor,
+			&editor->result);
+
+		if (ret < 0) {
+			return ret;
+		}
+
+		if (ret == EIE_NOT_AN_ERROR) {
+			return 0;
+		}
+
+		if (editor->debug_mode) {
+			log_write(&editor->log,
+				"editor_unindent_selection_or_line: SUCCESS");
+		}
+
+		return 0;
+	} else {
+		size_t x1, x2, y1, y2;
+		selection_normalize(&editor->sel, &x1, &y1, &x2, &y2);
+
+		editor->cursor.y = y1;
+		editor->cursor.x = 0;
+
+		const Line* line = vector_get(&editor->file.lines,
+			y1);
+
+		if (!line) {
+			result_set_reason(&editor->result,
+			"editor_unindent_selection_or_line: line is a null pointer");
+			editor->result.type = ERROR_NULL_POINTER;
+
+			return EIE_NOT_FATAL_ERROR;
+		}
+
+		size_t indent = line_get_indent(line);
+
+		line = NULL;
+
+		for (size_t i = 0; i < (y2 - y1 + 1); i++) {
+			ret = file_unindent_a_line(&editor->file, &editor->cursor,
+				&editor->result);
+
+			if (ret < 0) {
+				editor->cursor.x = x1;
+				editor->cursor.y = y1;
+
+				return EIE_FATAL_ERROR;
+			}
+
+			editor->cursor.y++;
+		}
+
+		editor->cursor.y--;
+
+		size_t move_cursor = (indent >= TAB_SIZE) ?
+			(TAB_SIZE) : (indent);
+
+		if (x1 >= indent) {
+			x1 -= move_cursor;
+			x2 -= move_cursor;
+		}
+
+		if (editor->sel.start_y < editor->sel.end_y ||
+		   (editor->sel.start_y == editor->sel.end_y &&
+			editor->sel.start_x <= editor->sel.end_x)) {
+
+			editor->cursor.y = y2;
+			editor->cursor.x = x2;
+
+			editor->sel.start_x = (editor->sel.start_x == 0) ?
+				0 : x1;
+			editor->sel.start_y = y1;
+			editor->sel.end_x = x2;
+			editor->sel.end_y = y2;
+		} else {
+			editor->cursor.y = y1;
+			editor->cursor.x = x1;
+
+			editor->sel.start_x = x2;
+			editor->sel.start_y = y2;
+			editor->sel.end_x = (editor->sel.end_x == 0) ?
+				0: x1;
+			editor->sel.end_y = y1;
+		}
+
+		if (editor->debug_mode) {
+			log_write(&editor->log, "editor_indent_a_line: SUCCESS");
+		}
+
+		return 0;
+	}
 }
 
 static int editor_insert_newline(Editor* editor, const Line* line) {
@@ -892,6 +1724,33 @@ int editor_handle_input(Editor* editor, int key) {
 
 			break;
 
+		case CTRL_KEY('p'):
+			ret = editor_indent_selection_or_line(editor);
+
+			if (ret == EIE_FATAL_ERROR) {
+				return 0;
+			}
+
+			break;
+
+		case CTRL_KEY('o'):
+			ret = editor_unindent_selection_or_line(editor);
+
+			if (ret == EIE_FATAL_ERROR) {
+				return 0;
+			}
+
+			break;
+
+		case CTRL_KEY('k'):
+			ret = editor_comment_line_or_selection(editor);
+
+			if (ret == EIE_FATAL_ERROR) {
+				return 0;
+			}
+
+			break;
+
 		case '\n':
 		case '\r': {
 			ret = editor_insert_newline(editor, line);
@@ -945,7 +1804,7 @@ int editor_handle_input(Editor* editor, int key) {
 			break;
 
 		case KEY_CTRL_SHIFT_ARROW_UP:
-			ret = editor_move_line_up(editor);
+			ret = editor_move_line_or_selection_up(editor);
 
 			if (ret == EIE_FATAL_ERROR) {
 				return 0;
@@ -954,7 +1813,7 @@ int editor_handle_input(Editor* editor, int key) {
 			break;
 
 		case KEY_CTRL_SHIFT_ARROW_DOWN:
-			ret = editor_move_line_down(editor);
+			ret = editor_move_line_or_selection_down(editor);
 
 			if (ret == EIE_FATAL_ERROR) {
 				return 0;
@@ -964,6 +1823,11 @@ int editor_handle_input(Editor* editor, int key) {
 
 		default:
 			if (key >= 32 && key <= 126) {
+				if (editor->sel.active) {
+					editor->selecting = 0;
+					selection_clear(&editor->sel);
+				}
+
 				ret = file_insert_char(&editor->file, &editor->cursor, 
 					key, &editor->result);
 

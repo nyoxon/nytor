@@ -3,6 +3,8 @@
 #include <stddef.h>
 #include <string.h>
 
+// PRE: result != NULL for all functions
+
 int result_set_reason(Result* result, const char* reason) {
 	if (result->reason) {
 		free(result->reason);

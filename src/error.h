@@ -2,12 +2,12 @@
 #define ERROR_H
 
 /*
-The value returned by a function with int return-value
+the value returned by a function with int return-value
 indicates whether or not an error has occurred in the function.
 To know the nature of the error, pass a non-null pointer to a Result
 as argument.
 
-The reason attribute of the Result struct is a non-terminated
+the reason attribute of the Result struct is a non-terminated
 string or a NULL pointer, its function is to determine the reason
 of the error. 
 The type attribute is a enum that specify whether or not the result
@@ -15,16 +15,18 @@ is an error and, if the former is true, specify the nature of it. If
 the result is not an error, then result type must be set to ERROR_OK and
 reason set to NULL (result_ok() does this job and cleans the last result).
 
-The Editor struct contains a result attribute and its function is to
+the Editor struct contains a result attribute and its function is to
 contains the last error that has occurred inside the program. Hence,
 to start handling errors, a pointer to editor.result must be passed to
 the function.
 
-If an error occurs inside a function, then it checks whether or not 
+if an error occurs inside a function, then it checks whether or not 
 the pointer to the result is NULL. If the latter, result_set_reason() 
 (which is the responsible for cleaning the result) must be called 
 and result->type set. Hence, once a new result is created, the last 
 one is cleaned.
+
+maybe this lib is unnecessary
 */
 
 #define EIE_FATAL_ERROR -1 // EIE = error in error

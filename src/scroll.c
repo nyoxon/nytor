@@ -3,6 +3,10 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
+// PRE: view != NULL
+// PRE: c != NULL
+// PRE: tsize != NULL
+
 void update_scroll(View* view, Cursor* c, TerminalSize* tsize) {
 	if (c->y < view->row_offset) {
 		view->row_offset = c->y;
@@ -20,6 +24,9 @@ void update_scroll(View* view, Cursor* c, TerminalSize* tsize) {
 		view->col_offset = c->x - tsize->cols + 1;
 	}
 }
+
+
+// PRE: tsize != NULL
 
 int update_terminal_size(TerminalSize* tsize) {
 	struct winsize ws;

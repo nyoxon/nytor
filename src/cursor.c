@@ -1,5 +1,15 @@
 #include "cursor.h"
 
+// certains conditions must be satisfied for the program to work
+// specifically, c != NULL.
+
+// whatever, the functions inside file.c already does that
+// verification (which is already useless given that a cursor
+// is always correctly initialized in the program)
+
+
+// PRE: c != NULL for all the functions
+
 void cursor_move_to(Cursor*c, size_t cx, size_t cy) {
 	c->x = cx;
 	c->y = cy;

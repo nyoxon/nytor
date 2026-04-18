@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+// PRE: line != NULL
+
 int line_get_indent(const Line* line) {
 	int indent = 0;
 
@@ -11,6 +13,22 @@ int line_get_indent(const Line* line) {
 
 	return indent;
 }
+
+int line_is_comment(const Line* line, size_t indent) {
+	const char* text = line->text;
+
+	size_t len = strlen(text);
+	size_t comment_fmt_len = strlen(COMMENT_FMT);
+
+	if (indent + comment_fmt_len > len) {
+		return 0;
+	}
+
+	return strncmp(text + indent, COMMENT_FMT, comment_fmt_len) == 0;	
+}
+
+// PRE: line != NULL
+// rewrite the text inside the line adding a tab at the beggining of it
 
 void line_set_indent(Line* line, size_t indent) {
 	size_t i = 0;
