@@ -1,5 +1,6 @@
 #include "editor.h"
 #include "input.h"
+#include "syntax_high.h"
 #include <unistd.h>
 #include <stdio.h>
 #include <string.h>
@@ -7,95 +8,6 @@
 
 #define DEFAULT_TERMINAL_WIDTH 50
 #define DEFAULT_TERMINAL_HEIGHT 24
-
-const char* KEYWORDS[] = {
-	"int", 
-	"void",
-	"float",
-	"double",
-	"short",
-	"long",
-	"char",
-	"unsigned",
-	"signed",
-	"struct",
-	"typedef",
-	"auto",
-	"enum",
-	"union",
-
-	"extern",
-	"static",
-	"const",
-	"sizeof",
-	"volatile",
-	"inline",
-	"restrict",
-
-	"return", 
-	"if", 
-	"else", 
-	"for", 
-	"case",
-	"while",
-	"continue",
-	"break",
-	"default",
-	"do",
-	"goto",
-	"register",
-	"switch"
-};
-
-const char* COLORS[] = {
-	TYPE_COLOR,
-	TYPE_COLOR,
-	TYPE_COLOR, 
-	TYPE_COLOR,
-	TYPE_COLOR,
-	TYPE_COLOR,
-	TYPE_COLOR,
-	TYPE_COLOR,
-	TYPE_COLOR,
-	TYPE_COLOR,
-	TYPE_COLOR,
-	TYPE_COLOR,
-	TYPE_COLOR,
-	TYPE_COLOR,
-
-	SPECIFIER_COLOR,
-	SPECIFIER_COLOR,
-	SPECIFIER_COLOR,
-	SPECIFIER_COLOR,
-	SPECIFIER_COLOR,
-	SPECIFIER_COLOR,
-	SPECIFIER_COLOR,
-
-	FLOW_COLOR,
-	FLOW_COLOR,
-	FLOW_COLOR,
-	FLOW_COLOR,
-	FLOW_COLOR,
-	FLOW_COLOR,
-	FLOW_COLOR,
-	FLOW_COLOR,
-	FLOW_COLOR,
-	FLOW_COLOR,
-	FLOW_COLOR,
-	FLOW_COLOR,
-	FLOW_COLOR,
-
-	NUMBER_COLOR,
-	FUNCTION_COLOR,
-	MACRO_COLOR
-};
-
-const char* MACROS[] = {
-	"#include",
-	"#define",
-	"#ifndef",
-	"#endif"
-};
 
 int editor_init
 (
@@ -226,19 +138,6 @@ static void index_line(size_t y, size_t line_count) {
 	write(STDOUT_FILENO, "\033[0m", 4);
 }
 
-static int is_keyword(const char* word, size_t len, int* index) {
-	for (size_t i = 0; i < KEYWORD_COUNT; i++) {
-		if (strlen(KEYWORDS[i]) == len &&
-			strncmp(word, KEYWORDS[i], len) == 0)
-		{
-			*index = (int) i;
-			return 1;
-		}
-	}
-
-	return 0;
-}
-
 static int check_is_macro(const char* word, size_t len) {
 	for (size_t i = 0; i < MACROS_COUNT; i++) {
 		if (strlen(MACROS[i]) == len &&
@@ -249,29 +148,6 @@ static int check_is_macro(const char* word, size_t len) {
 	}
 
 	return 0;	
-}
-
-static int is_word_char(char c) {
-	return (c >= 'a' && c <= 'z') ||
-		   (c >= 'A' && c <= 'Z') ||
-		   (c >= '0' && c <= '9') ||
-		   (c == '_');
-}
-
-static int is_digit(char c) {
-	return (c >= '0' && c <= '9');
-}
-
-static void write_color(const char* color) {
-	write(STDOUT_FILENO, color, COLOR_SIZE);
-}
-
-static void invert_color() {
-	write(STDOUT_FILENO, "\033[7m", 4);
-}
-
-static void reset_color() {
-	write(STDOUT_FILENO, "\033[0m", 4);
 }
 
 void editor_render(Editor* editor) {
@@ -307,15 +183,26 @@ void editor_render(Editor* editor) {
 			index_line(file_row, editor->file.lines.size);
 		}
 
-		if (line->len == 0 && editor->sel.active && 
-		   ((editor->sel.start_y <= y &&
-			 y <= editor->sel.end_y) ||
-		     (editor->sel.end_y <= y &&
-		     y <= editor->sel.start_y)))
+		// prints a ' ' in a selected empty line
+		if (line->len == 0 && 
+			editor->sel.active && 
+			check_line_in_selection(y, editor->sel.start_y,
+									   editor->sel.end_y))
 		{
 			invert_color();
 			write(STDOUT_FILENO, " ", 1);
 			reset_color();
+		}
+
+		size_t start = editor->view.col_offset;
+		size_t end = start + screen_cols;
+
+		if (start > line->len) {
+			start = line->len;
+		}
+
+		if (end > line->len) {
+			end = line->len;
 		}
 
 		size_t indent = line_get_indent(line);
@@ -329,83 +216,198 @@ void editor_render(Editor* editor) {
 
 		// if the actual word starts with digit
 		int start_with_digit = 0;
+
+		// if the word must be treated as a function
 		int is_function = 0;
+
+		// if the word must be treated as a macro
 		int is_macro = 0;
 
 		// if the actual character belongs to a keyword
 		int in_keyword = 0;
 
-		size_t start = editor->view.col_offset;
-		size_t end = start + screen_cols;
-
-		if (start > line->len) {
-			start = line->len;
-		}
-
-		if (end > line->len) {
-			end = line->len;
-		}
-
-		in_comment = 0;
-		int in_selection = 0;
+		// position in COLORS array
 		int keyword_index = -1;
+
+		int in_selection = 0;
 
 		if (in_block_comment || is_comment) {
 			write_color(COMMENT_COLOR);
 		}
 
-		/*inefficient, since it iterates over all the chars 
-		on the planet (see alternative later)*/
-
 		/*
-		i don't understand exactly how i'm managing to render
-		blocks of code in the color they should be.
-		i just changed things here, things there until it finally
-		worked out :D
+		COLORING PRIORITIES:
+
+		deciding the color of current char is to find
+		in which case it is given the following order:
+
+		1 - in a selection
+		2 - in a line that is a comment
+		3 - in a comment inside a line
+		4 - in a block comment
+		5 - in a keyword
+
 		*/
+
+		/*inefficient, since it iterates over all the chars 
+		on the planet (FUTURE: find a alternative)*/
 
 		for (size_t x = start; x < end; x++) {
 			// log_write(&editor->log, "%ld %ld", y, in_block_comment);
+
+			// --- SELECTION ---
+
+			// if a char is selected, so any other case
+			// must be ignored in rendering
+
 			int selected = is_selected(&editor->sel, x, 
 				file_row, x1, y1, x2, y2);
 
+			// beggining of the selection
 			if (selected && !in_selection) {
 				invert_color();
 				in_selection = 1;
 			}
 
+			// reseting and inverting the color is more important
+			// than any other case
 			if (selected && 
 			   (in_keyword ||
-			    is_comment)) 
+			    is_comment ||
+			    in_comment)) 
 			{
+			// (FUTURE: find out how to do the same thing
+			// when in_block_comment is set)
 				reset_color();
 				invert_color();
 			}
 
+			// end of the selection
 			if (!selected && in_selection) {
 				reset_color();
 				in_selection = 0;
 			}
 
+			/*
+			ignores the rest, except in these cases:
+
+			case (in_keyword && !is_word_char(current_char)):
+
+			imagine the following code:
+
+				int variable;
+
+			if the selection starts in the middle of the 
+			'variable' and the user moves it to the left
+			in order to select 'int' or the ' ' just after it, 
+			the letters after the start of the selection will 
+			be the same color as 'int' is rendered
+
+			the reason is simple: given that the ' ' just after 
+			'int' is selected and its existence is precisely
+			the condition of reseting the in_keyword, the program
+			when seeing that this ' ' is selected would jump directly
+			to render.
+			this means that when the current char leaves 'int',
+			in_keyword would not be reset, remaining equal to 1.
+			in this case, when arriving at the letters that
+			are after the start of the selection, these letters
+			would be painted the same color that 'int' is painted
+			(after all, keyword_index would not be reset either)
+			
+			case (!in_keyword && is_word_char(current_char)):
+
+			if this case were ignored and the current char
+			was a beginning of a keyword, the other letters
+			that make up that keyword would not be painted
+			the way the should if they were out of the selection
+			so, in this case, we need to know if current_char is
+			the beggining of a keyword to change in_keyword if
+			necessary
+
+			case (!in_keyword && !is_word_char(current_char)):
+
+			the current_char could not be a word char, but if
+			this case were ignored and the current_char was
+			a special char that defines a different kind
+			of keyword (macro, string literal etc), the same
+			in the last case would happen to the other letters
+			that form the word
+
+
+			if none of the above cases are true, then we can
+			finally 'ignore the rest' and jump to render
+			*/
 			if (selected) {
+				if (in_keyword && !is_word_char(line->text[x])) {
+					in_keyword = 0;
+					keyword_index = -1;
+				}
+
+				if (!in_keyword) {
+					if (is_word_char(line->text[x])) {
+						goto keyword;
+					} else {
+						goto special_no_word_char;
+					}
+				}
+
 				goto render;
 			}
 
+			if (is_comment) {
+				goto render;
+			}
+
+			// --- LINE IS A COMMENT ---
+
+			// that is decide outside this loop
+
+
+			// --- LINE HAS A COMMENT ---
+
 			if (!in_comment &&
-				!is_comment &&
-				!in_block_comment &&
+				line->text[x] == COMMENT_FMT[0] &&
+				end >= comment_len &&
+				x <= end - comment_len)
+			{
+				size_t comment = check_has_a_comment(
+					x,
+					line
+				);
+
+				if (comment) {
+					write_color(COMMENT_COLOR);
+					in_comment = 1;
+				}
+			}
+
+			if (in_comment) {
+				goto render;
+			}
+
+			// --- BLOCK COMMENTS ---
+
+			// after selection, block comments have priority
+			// which means that if the actual char is in
+			// a block comment, so any other case of coloring
+			// (except selection) must be ignored
+
+
+			// if the actual char is equal to the
+			// first char of the start block comment format
+			// and whether or not is possible
+			// to that char belongs to a start block comment fmt
+			if (!in_block_comment &&
 				line->text[x] == START_BLOCK_COMMENT[0] && 
 				end >= start_comment_len &&
 				x <= end - start_comment_len) 
 			{
-				size_t is_block = 1;
-
-				for (size_t j = x; j < x + start_comment_len; j++) {
-					if (line->text[j] != START_BLOCK_COMMENT[j - x]) {
-						is_block = 0;
-						break;
-					}
-				}
+				int is_block = check_forms_a_comment_fmt(
+					x,
+					line,
+					SYN_START
+				);
 
 				if (is_block) {
 					write_color(COMMENT_COLOR);
@@ -415,19 +417,22 @@ void editor_render(Editor* editor) {
 				}
 			}
 
-			// in_block_comment == 1 iff !is_comment, !in_comment etc
+			// if the actual char is equal to the
+			// last char of the end block comment format
+			// and whether or not is possible
+			// to that char belongs to a end block comment fmt
+
+			// of course, that verification must be done
+			// if and only if in_block_comment is set
 			if (in_block_comment &&
 				line->text[x] == END_BLOCK_COMMENT[end_comment_len - 1] && 
 				x >= end_comment_len - 1) 
 			{
-				size_t end_block = 1;
-
-				for (size_t j = x, i = 1; j > x - end_comment_len; j--, i++) {
-					if (line->text[j] != END_BLOCK_COMMENT[end_comment_len - i]) {
-						end_block = 0;
-						break;
-					}
-				}
+				size_t end_block = check_forms_a_comment_fmt(
+					x,
+					line,
+					SYN_END
+				);
 
 				if (end_block) {
 					in_block_comment = 0;
@@ -438,37 +443,28 @@ void editor_render(Editor* editor) {
 				}
 			}
 
-			if (!in_comment &&
-				!is_comment &&
-				!in_block_comment &&
-				line->text[x] == COMMENT_FMT[0] &&
-				end >= comment_len &&
-				x <= end - comment_len)
-			{
-				size_t comment = 1;
-
-				for (size_t j = x; j < x + comment_len; j++) {
-					if (line->text[j] != COMMENT_FMT[j - x]) {
-						comment = 0;
-						break;
-					}
-				}
-
-				if (comment) {
-					write_color(COMMENT_COLOR);
-					in_comment = 1;
-				}
+			if (in_block_comment) {
+				goto render;
 			}
 
-			if (!in_block_comment &&
-				!is_comment &&
-				!in_keyword && 
+			// --- KEYWORD ---
+
+
+			// where most of the in_keyword = 1 happen
+			if (!in_keyword &&
 				is_word_char(line->text[x]))
 			{
+
+			keyword:
+				// the keyword is inside a word
+				// ex: aint, intvoid
 				if (x > 0 && is_word_char(line->text[x - 1])) {
 					goto render;
 				}
 
+				// if the word starts with a number,
+				// then the entire word is automatically
+				// considered as a number
 				if (is_digit(line->text[x])) {
 					keyword_index = KEYWORD_COUNT;
 					start_with_digit = 1;
@@ -477,14 +473,13 @@ void editor_render(Editor* editor) {
 					goto render;
 				}
 
-				size_t i = x;
+				size_t len = get_size_of_word(x, line);
 
-				while (i < line->len && is_word_char(line->text[i])) {
-					i++;
-				}
-
-				if (end - i >= 2) {
-					if (line->text[i] == '(') {
+				if (end - (len + x) >= 2) {
+					// there is no check to know if
+					// there is a ')' pair closing
+					// the parentheses
+					if (line->text[(len + x)] == '(') {
 						is_function = 1;
 
 						keyword_index = KEYWORD_COUNT + 1;
@@ -494,22 +489,30 @@ void editor_render(Editor* editor) {
 					}
 				}
 
-				size_t len = i - x;
-
-				if (is_keyword(&line->text[x], len, &keyword_index)) {
+				if (check_is_keyword(&line->text[x], len, &keyword_index)) {
 					in_keyword = 1;
 				}
+
+				goto render;
 			}
 
-			if (!in_block_comment &&
-				!is_comment && 
-				!is_word_char(line->text[x])) 
+			// where most of the in_keyword = 0 happen.
+			// contains the special_no_word_char label
+			// that verifies if the char is a special no
+			// word char
+			if (!is_word_char(line->text[x])) 
 			{
 				if (in_keyword) {
+					// if '.' is inside a word considered
+					// as number, the it must not break
+					// the color rendering of the number
 					if (start_with_digit && line->text[x] == '.') {
 						goto render;
 					}
 
+					// if it finds one '(' and is_function
+					// is set, the we automatically stop
+					// coloring using the FUNCTION_COLOR
 					if (is_function && 
 					   (line->text[x] == '(')) 
 					{
@@ -532,6 +535,11 @@ void editor_render(Editor* editor) {
 					in_keyword = 0;
 					keyword_index = -1;
 				} else {
+					// a special no word char is a char
+					// that is not a word char but
+					// defines a different kind of keyword
+					// (like macros or string literal)
+				special_no_word_char:
 					if (line->text[x] == MACRO_FMT) {
 						if (x != indent) {
 							goto render;
@@ -558,33 +566,34 @@ void editor_render(Editor* editor) {
 				}
 			}
 
-			render:
-				if (!selected && !in_block_comment && !is_comment 
-					&& in_keyword && keyword_index >= 0) 
-				{
-					if (!is_function) {
-						write_color(COLORS[keyword_index]);
-					} else {
-						if (line->text[x] != '(') 
-						{
-							write_color(COLORS[keyword_index]);	
-						}
-					}
-				}
+			// --- RENDERING ---
+		render:
+			if (!selected && 
+				!in_block_comment && 
+				!is_comment && 
+				in_keyword && 
+				keyword_index >= 0) 
+			{
+				write_color(COLORS[keyword_index]);
+			}
 
-				if (start_with_digit && !is_digit(line->text[x])) {
-					if (line->text[x] != '.') {
-						invert_color();
-					}
+			// a variable name should not start with a digit,
+			// then the editor indicates it to the user
+			// inverting the color
+			if (start_with_digit && !is_digit(line->text[x])) {
+				if (line->text[x] != '.') {
+					invert_color();
 				}
+			}
 
-				write(STDOUT_FILENO, &line->text[x], 1);
+			write(STDOUT_FILENO, &line->text[x], 1);
 
-				if (start_with_digit && !is_digit(line->text[x])) {
-					if (line->text[x] != '.') {
-						reset_color();
-					}
+			// if the case above is true, reset the color
+			if (start_with_digit && !is_digit(line->text[x])) {
+				if (line->text[x] != '.') {
+					reset_color();
 				}
+			}
 		}
 
 		write(STDOUT_FILENO, "\n", 1);
