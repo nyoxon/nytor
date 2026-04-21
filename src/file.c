@@ -86,19 +86,42 @@ static int split_lines
 			end++;
 		}
 
-		size_t len = end - start;
+		size_t rx = 0;
+		for (size_t i = start; i < end; i++) {
+			if (data[i] == '\t') {
+				size_t spaces = TAB_SIZE - (rx % TAB_SIZE);
+				rx += spaces;
+			} else {
+				rx++;
+			}
+		}
+
+		size_t len = rx;
 
 		Line line;
 		line.text = malloc(len + 1);
-
 		if (!line.text) {
 			return -1;
 		}
 
-		memcpy(line.text, data + start, len);
-		line.text[len] = '\0';
+		size_t j = 0;
+		rx = 0;
+
+		for (size_t i = start; i < end; i++) {
+			if (data[i] == '\t') {
+				size_t spaces = TAB_SIZE - (rx % TAB_SIZE);
+				for (size_t k = 0; k < spaces; k++) {
+					line.text[j++] = ' ';
+				}
+				rx += spaces;
+			} else {
+				line.text[j++] = data[i];
+				rx++;
+			}
+		}
+
+		line.text[j] = '\0';
 		line.len = len;
-		// line.dirty = 0;
 
 		vector_push(&file->lines, &line);
 

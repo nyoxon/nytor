@@ -42,5 +42,9 @@ int update_terminal_size(TerminalSize* tsize) {
 		tsize->rows--;
 	}
 
+	if (tsize->cols > 0) {
+		tsize->cols--;
+	}
+
 	return 0;	
 }

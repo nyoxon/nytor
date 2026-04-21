@@ -28,10 +28,16 @@ typedef struct {
 	int new_file;
 	int render_line_enumeration;
 	int debug_mode;
+	int show_tabs;
 
 	Result result;
 
 	Log log;
+
+	Prompt pt;
+
+	Vector patterns;
+	int actual_pattern;
 } Editor;
 
 int editor_init
@@ -52,5 +58,7 @@ int editor_quit(Editor* editor);
 void editor_log_write(const Editor* editor);
 
 void clean_terminal();
+void move_cursor(size_t x, size_t y);
+size_t get_gutter_width(size_t line_count);
 
 #endif

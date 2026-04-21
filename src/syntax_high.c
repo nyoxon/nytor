@@ -91,7 +91,11 @@ const char* COLORS[] = {
 
 	NUMBER_COLOR,
 	FUNCTION_COLOR,
-	MACRO_COLOR
+	MACRO_COLOR,
+	STRING_COLOR,
+	CHAR_COLOR,
+	IMPORT_COLOR,
+	LABEL_COLOR
 };
 
 const char* MACROS[] = {
@@ -155,8 +159,8 @@ int check_forms_a_comment_fmt(size_t x, const Line* line, int type) {
 		fmt = END_BLOCK_COMMENT;
 		fmt_len = strlen(fmt);
 
-		for (size_t j = x, i = 1; j > x - fmt_len; j--, i++) {
-			if (line->text[j] != fmt[fmt_len - i]) {
+		for (size_t j = x; j < x + fmt_len; j++) {
+			if (line->text[j] != fmt[j - x]) {
 				is_block = 0;
 				break;
 			}
@@ -195,6 +199,20 @@ int check_is_keyword(const char* word, size_t len, int* index) {
 	return 0;
 }
 
+int check_is_escaped(size_t x, const Line* line) {
+	size_t consecutive_espape_chars = 0;
+
+	for (size_t i = 1; i <= x; i++) {
+		if (line->text[x - i] != ESCAPE_CHAR) {
+			break;
+		} else {
+			consecutive_espape_chars++;
+		}
+	}
+
+	return (consecutive_espape_chars % 2);
+}
+
 int is_word_char(char c) {
 	return (c >= 'a' && c <= 'z') ||
 		   (c >= 'A' && c <= 'Z') ||
@@ -215,4 +233,3 @@ size_t get_size_of_word(size_t x, const Line* line) {
 
 	return i - x;
 }
-

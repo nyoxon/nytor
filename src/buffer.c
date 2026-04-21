@@ -4,8 +4,8 @@
 
 // PRE: line != NULL
 
-int line_get_indent(const Line* line) {
-	int indent = 0;
+size_t line_get_indent(const Line* line) {
+	size_t indent = 0;
 
 	while ((size_t) indent < line->len && line->text[indent] == ' ') {
 		indent++;
@@ -13,6 +13,7 @@ int line_get_indent(const Line* line) {
 
 	return indent;
 }
+
 
 int line_is_comment(const Line* line, size_t indent) {
 	const char* text = line->text;
@@ -66,4 +67,11 @@ void vector_line_destroy(void* ptr) {
 
 void clipboard_free(Clipboard* cb) {
 	free(cb->text);
+}
+
+void prompt_init(Prompt* pt, const char* label) {
+	pt->active = 1;
+	pt->len = 0;
+	pt->buf[0] = '\0';
+	pt->label = label;
 }

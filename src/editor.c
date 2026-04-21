@@ -5,6 +5,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <ctype.h>
+#include <errno.h>
+#include <stdlib.h>
 
 #define DEFAULT_TERMINAL_WIDTH 50
 #define DEFAULT_TERMINAL_HEIGHT 24
@@ -12,7 +15,7 @@
 int editor_init
 (
 	Editor* editor, 
-	const char* filename, 
+	const char* filename,
 	int render_line_enumeration,
 	int debug_mode
 ) 
@@ -26,11 +29,12 @@ int editor_init
 		return -1;
 	}
 
-	editor->tsize.rows = DEFAULT_TERMINAL_HEIGHT;
-	editor->tsize.cols = DEFAULT_TERMINAL_WIDTH;
+	update_terminal_size(&editor->tsize);
 
 	editor->cursor.x = 0;
 	editor->cursor.y = 0;
+
+	editor->pt.active = 0;
 
 	editor->view.row_offset = 0;
 	editor->view.col_offset = 0;
@@ -45,6 +49,8 @@ int editor_init
 	editor->render_line_enumeration = render_line_enumeration;
 	editor->debug_mode = debug_mode;
 
+	editor->show_tabs = 0;
+	editor->actual_pattern = -1;
 	return 0;
 }
 
@@ -75,7 +81,7 @@ void editor_log_write(const Editor* editor) {
 	log_write(&editor->log, editor->result.reason);
 }
 
-static void move_cursor(size_t x, size_t y) {
+void move_cursor(size_t x, size_t y) {
 	char buf[32];
 	int len = snprintf(buf, sizeof(buf), "\033[%zu;%zuH", y + 1, x + 1);
 	write(STDOUT_FILENO, buf, len);
@@ -109,7 +115,7 @@ static int is_selected(Selection* sel, size_t x, size_t y,
 	return 1;
 }
 
-static size_t get_gutter_width(size_t line_count) {
+size_t get_gutter_width(size_t line_count) {
 	int digits = 1;
 	size_t tmp = line_count;
 
@@ -194,15 +200,17 @@ void editor_render(Editor* editor) {
 			reset_color();
 		}
 
-		size_t start = editor->view.col_offset;
-		size_t end = start + screen_cols;
-
-		if (start > line->len) {
-			start = line->len;
-		}
+		size_t start = 0; // fix this later
+		size_t end = editor->view.col_offset + screen_cols -1;
 
 		if (end > line->len) {
 			end = line->len;
+		} else {
+			end = editor->view.col_offset + screen_cols - 1;
+		}
+
+		if (editor->view.col_offset >= end) {
+			end = 0;
 		}
 
 		size_t indent = line_get_indent(line);
@@ -220,8 +228,9 @@ void editor_render(Editor* editor) {
 		// if the word must be treated as a function
 		int is_function = 0;
 
-		// if the word must be treated as a macro
-		int is_macro = 0;
+		int is_label = 0;
+
+		int special_no_word = -1;
 
 		// if the actual character belongs to a keyword
 		int in_keyword = 0;
@@ -247,12 +256,19 @@ void editor_render(Editor* editor) {
 		4 - in a block comment
 		5 - in a keyword
 
-		*/
+		there's a catch however. "comment inside a line" is not more
+		important than "block comment". indeed, if you write
+		a "//" inside a block comment, the program should not detect
+		that as a "comment inside a line" and vice-versa
+		so in pratical terms: 3 == 4, i.e, the program, in order
+		to consider whether the 3rd case is valid, needs to verify
+		that the 4th is not valid (in_block_comment = 0) and vice-versa
 
-		/*inefficient, since it iterates over all the chars 
-		on the planet (FUTURE: find a alternative)*/
+		the following loop is kind of inefficient since it iterates 
+		over all the chars on the planet (FUTURE: find a alternative)*/
 
 		for (size_t x = start; x < end; x++) {
+			// log_write(&editor->log, "y: %ld, cursor: %ld", y, editor->cursor.x);
 			// log_write(&editor->log, "%ld %ld", y, in_block_comment);
 
 			// --- SELECTION ---
@@ -366,7 +382,8 @@ void editor_render(Editor* editor) {
 
 			// --- LINE HAS A COMMENT ---
 
-			if (!in_comment &&
+			if (!in_block_comment && // IMPORTANT
+				!in_comment &&
 				line->text[x] == COMMENT_FMT[0] &&
 				end >= comment_len &&
 				x <= end - comment_len)
@@ -378,6 +395,11 @@ void editor_render(Editor* editor) {
 
 				if (comment) {
 					write_color(COMMENT_COLOR);
+
+					if (in_keyword) {
+						in_keyword = 0;
+					}
+
 					in_comment = 1;
 				}
 			}
@@ -413,20 +435,34 @@ void editor_render(Editor* editor) {
 					write_color(COMMENT_COLOR);
 					in_block_comment = 1;
 
-					goto render;
+					// a '/*/' pattern should not break the block
+					for (size_t k = 0; k < start_comment_len; k++) {
+						write(STDOUT_FILENO, &line->text[k + x], 1);
+					}
+
+					// if there is a '/*/' pattern, the program
+					// will read a '/*' and starts the block comment,
+					// then will jump to the '/' just after '*'
+					x += start_comment_len - 1;
+
+					continue;
 				}
 			}
 
 			// if the actual char is equal to the
-			// last char of the end block comment format
+			// first char of the end block comment format
 			// and whether or not is possible
 			// to that char belongs to a end block comment fmt
+
+			// the first one END_BLOCK_COMMENT found is the one
+			// who causes the block to be reset
 
 			// of course, that verification must be done
 			// if and only if in_block_comment is set
 			if (in_block_comment &&
-				line->text[x] == END_BLOCK_COMMENT[end_comment_len - 1] && 
-				x >= end_comment_len - 1) 
+				line->text[x] == END_BLOCK_COMMENT[0] && 
+				end >= end_comment_len &&
+				x <= end - end_comment_len) 
 			{
 				size_t end_block = check_forms_a_comment_fmt(
 					x,
@@ -436,7 +472,13 @@ void editor_render(Editor* editor) {
 
 				if (end_block) {
 					in_block_comment = 0;
-					write(STDOUT_FILENO, &line->text[x], 1);
+
+					for (size_t k = 0; k < end_comment_len; k++) {
+						write(STDOUT_FILENO, &line->text[k + x], 1);
+					}
+
+					x += end_comment_len - 1;
+
 					reset_color();
 
 					continue;
@@ -466,7 +508,7 @@ void editor_render(Editor* editor) {
 				// then the entire word is automatically
 				// considered as a number
 				if (is_digit(line->text[x])) {
-					keyword_index = KEYWORD_COUNT;
+					keyword_index = KEYWORD_COUNT + NUMBER_OFFSET;
 					start_with_digit = 1;
 					in_keyword = 1;
 
@@ -475,21 +517,32 @@ void editor_render(Editor* editor) {
 
 				size_t len = get_size_of_word(x, line);
 
-				if (end - (len + x) >= 2) {
+				if (end - (len + x) >= 1) {
 					// there is no check to know if
 					// there is a ')' pair closing
 					// the parentheses
-					if (line->text[(len + x)] == '(') {
+					if (line->text[(len + x)] == START_FUNCTION_FMT) {
 						is_function = 1;
 
-						keyword_index = KEYWORD_COUNT + 1;
+						keyword_index = KEYWORD_COUNT + FUNCTION_OFFSET;
+						in_keyword = 1;
+
+						goto render;
+					}
+
+					if (line->text[(len + x)] == LABEL_FMT) {
+						is_label = 1;
+
+						keyword_index = KEYWORD_COUNT + LABEL_OFFSET;
 						in_keyword = 1;
 
 						goto render;
 					}
 				}
 
-				if (check_is_keyword(&line->text[x], len, &keyword_index)) {
+				if (check_is_keyword(&line->text[x], len, 
+					&keyword_index)) 
+				{
 					in_keyword = 1;
 				}
 
@@ -514,7 +567,7 @@ void editor_render(Editor* editor) {
 					// is set, the we automatically stop
 					// coloring using the FUNCTION_COLOR
 					if (is_function && 
-					   (line->text[x] == '(')) 
+					   (line->text[x] == START_FUNCTION_FMT))
 					{
 						reset_color();
 						in_keyword = 0;
@@ -523,12 +576,74 @@ void editor_render(Editor* editor) {
 						goto render;
 					}
 
-					if (start_with_digit) {
-						start_with_digit = 0;
+					if (is_label &&
+						line->text[x] == LABEL_FMT)
+					{
+						reset_color();
+						in_keyword = 0;
+						keyword_index = -1;
+
+						goto render;
 					}
 
-					if (is_macro) {
-						is_macro = 0;
+					if (special_no_word == SPECIAL_STRING &&
+					   (line->text[x] == END_STRING_FMT))
+					{
+						if (check_is_escaped(x, line)) {
+							goto render;
+						}
+
+						write(STDOUT_FILENO, &line->text[x],
+							STRING_FMT_SIZE);
+
+						reset_color();
+						in_keyword = 0;
+						keyword_index = -1;
+						special_no_word = -1;
+
+						continue;
+					} else if (special_no_word == SPECIAL_STRING) {
+						goto render;
+					}
+
+					if (special_no_word == SPECIAL_CHAR &&
+						line->text[x] == END_CHAR_FMT)
+					{
+						if (check_is_escaped(x, line)) {
+							goto render;
+						}
+
+						write(STDOUT_FILENO, &line->text[x],
+							CHAR_FMT_SIZE);
+
+						reset_color();
+						in_keyword = 0;
+						keyword_index = -1;
+						special_no_word = -1;
+
+						continue;
+					} else if (special_no_word == SPECIAL_CHAR) {
+						goto render;
+					}
+
+					if (special_no_word == SPECIAL_IMPORT &&
+						line->text[x] == END_IMPORT_FMT)
+					{
+						write(STDOUT_FILENO, &line->text[x],
+							IMPORT_FMT_SIZE);
+
+						reset_color();
+						in_keyword = 0;
+						keyword_index = -1;
+						special_no_word = -1;
+
+						continue;
+					} else if (special_no_word == SPECIAL_IMPORT) {
+						goto render;
+					}
+
+					if (start_with_digit) {
+						start_with_digit = 0;
 					}
 
 					reset_color();
@@ -553,21 +668,73 @@ void editor_render(Editor* editor) {
 							i++;
 						}
 
-						size_t len = i - x;		
+						size_t len = i - x;
 
 						if (check_is_macro(&line->text[x], 
 							len)) 
 						{
-							keyword_index = KEYWORD_COUNT + 2;
-							is_macro = 1;
+							keyword_index = KEYWORD_COUNT + 
+								MACRO_OFFSET;
+
+							// special_no_word = SPECIAL_MACRO;
 							in_keyword = 1;
 						}
-					}					
+					}
+
+					else if (special_no_word < 0 &&
+							 line->text[x] == START_STRING_FMT) 
+					{
+						keyword_index = KEYWORD_COUNT + STRING_OFFSET;
+						special_no_word = SPECIAL_STRING;
+						in_keyword = 1;
+					}
+
+					else if (special_no_word < 0 &&
+							 line->text[x] == START_CHAR_FMT) 
+					{
+						keyword_index = KEYWORD_COUNT + CHAR_OFFSET;
+						special_no_word = SPECIAL_CHAR;
+						in_keyword = 1;
+					}
+
+					else if (special_no_word < 0 &&
+							 line->text[x] == START_IMPORT_FMT)
+					{
+						keyword_index = KEYWORD_COUNT + IMPORT_OFFSET;
+						special_no_word = SPECIAL_IMPORT;
+						in_keyword = 1;
+					}
 				}
 			}
 
 			// --- RENDERING ---
 		render:
+			if (x < editor->view.col_offset) {
+				continue;
+			}
+
+			if (line->text[x] == ' ' && editor->show_tabs) {
+				if (!selected && 
+					!in_block_comment &&
+					!in_comment &&
+					!is_comment) 
+				{
+					write_color(TABS_COLOR);
+				}
+
+				write(STDOUT_FILENO, ".", 1);
+
+				if (!selected && 
+					!in_block_comment &&
+					!in_comment &&
+					!is_comment) 
+				{
+					reset_color(TABS_COLOR);
+				}
+
+				continue;
+			}
+
 			if (!selected && 
 				!in_block_comment && 
 				!is_comment && 
@@ -598,9 +765,17 @@ void editor_render(Editor* editor) {
 
 		write(STDOUT_FILENO, "\n", 1);
 
-		if (in_selection || is_comment) {
+		if (in_selection || 
+			is_comment || 
+			in_keyword || 
+			in_comment) 
+		{
 			reset_color();
 		}
+	}
+
+	if (in_block_comment) {
+		reset_color();
 	}
 
 	if (editor->debug_mode) {
@@ -608,13 +783,12 @@ void editor_render(Editor* editor) {
 	}
 
 	if (editor->render_line_enumeration) {
-
 		size_t gutter_width = get_gutter_width(editor->file.lines.size);
-		move_cursor(editor->cursor.x + 
+		move_cursor(editor->cursor.x +
 					gutter_width - editor->view.col_offset,
 					editor->cursor.y - editor->view.row_offset);
 	} else {
-		move_cursor(editor->cursor.x,
+		move_cursor(editor->cursor.x - editor->view.col_offset,
 					editor->cursor.y - editor->view.row_offset);		
 	}
 }
@@ -658,6 +832,9 @@ static char get_delimiter_pair(int key) {
 		case '{' : return '}';
 		case '(' : return ')';
 		case '[' : return ']';
+		case START_STRING_FMT : return END_STRING_FMT;
+		case START_CHAR_FMT : return END_CHAR_FMT;
+		case START_IMPORT_FMT : return END_IMPORT_FMT;
 	}
 
 	return ' ';
@@ -719,6 +896,10 @@ static int editor_handle_close_delimiters
 }
 
 static void editor_move_cursor_to_beginning_of_line(Editor* editor) {
+	if (editor->sel.active && !editor->selecting) {
+		selection_clear(&editor->sel);
+	}
+
 	editor->cursor.x = 0;
 
 	if (editor->sel.active) {
@@ -737,6 +918,10 @@ static void editor_move_cursor_to_indent_of_line
 	const Line* line
 ) 
 {
+	if (editor->sel.active && !editor->selecting) {
+		selection_clear(&editor->sel);
+	}
+
 	size_t indent = line_get_indent(line);
 	editor->cursor.x = indent;
 
@@ -756,6 +941,10 @@ static void editor_move_cursor_to_end_of_line
 	size_t line_size
 ) 
 {
+	if (editor->sel.active && !editor->selecting) {
+		selection_clear(&editor->sel);
+	}
+
 	editor->cursor.x = line_size;
 
 	if (editor->sel.active) {
@@ -899,6 +1088,10 @@ static int editor_save_file(Editor* editor) {
 }
 
 static void editor_move_cursor_up(Editor* editor) {
+	if (editor->sel.active && !editor->selecting) {
+		selection_clear(&editor->sel);
+	}
+
 	cursor_move_up(&editor->cursor);
 
 	if (editor->selecting) {
@@ -916,6 +1109,10 @@ static void editor_move_cursor_down
 	size_t line_count
 ) 
 {
+	if (editor->sel.active && !editor->selecting) {
+		selection_clear(&editor->sel);
+	}
+
 	cursor_move_down(&editor->cursor, line_count);
 
 	if (editor->selecting) {
@@ -927,8 +1124,23 @@ static void editor_move_cursor_down
 	}	
 }
 
-static void editor_move_cursor_right(Editor* editor, size_t line_size) {
+static void editor_move_cursor_right
+(
+	Editor* editor, 
+	size_t line_size
+) 
+{
+	if (editor->sel.active && !editor->selecting) {
+		selection_clear(&editor->sel);
+	}
+
 	cursor_move_right(&editor->cursor, line_size);
+
+	if (editor->cursor.x - editor->view.col_offset >= 
+		editor->tsize.cols)
+	{
+		editor->view.col_offset += editor->tsize.cols - TAB_SIZE;
+	}
 
 	if (editor->selecting) {
 		selection_update(&editor->sel, &editor->cursor);
@@ -940,7 +1152,21 @@ static void editor_move_cursor_right(Editor* editor, size_t line_size) {
 }
 
 static void editor_move_cursor_left(Editor* editor) {
+	if (editor->sel.active && !editor->selecting) {
+		selection_clear(&editor->sel);
+	}
+
 	cursor_move_left(&editor->cursor);
+
+	if (editor->view.col_offset > 0 && 
+		editor->cursor.x == editor->view.col_offset - 1)
+	{
+		if (editor->view.col_offset > editor->tsize.cols) {
+			editor->view.col_offset -= editor->tsize.cols - TAB_SIZE;
+		} else {
+			editor->view.col_offset = 0;
+		}
+	}
 
 	if (editor->selecting) {
 		selection_update(&editor->sel, &editor->cursor);
@@ -1280,7 +1506,34 @@ static int editor_comment_line_or_selection(Editor* editor) {
 	}
 }
 
-static int editor_delete_char_or_selection(Editor* editor) {
+// PRE: prev and current must be valid, ie,
+// current = line->text[x] where
+// x > 0 && x < line->len;
+
+static int is_between_delimiters
+(
+	char prev,
+	char current
+) 
+{
+	return (prev == '{' && current == '}') ||
+		   (prev == '(' && current == ')') ||
+		   (prev == '[' && current == ']') ||
+		   (prev == START_CHAR_FMT && 
+		   		current == END_CHAR_FMT) ||
+		   (prev == START_STRING_FMT &&
+		   		current == END_STRING_FMT) ||
+		   (prev == START_IMPORT_FMT &&
+		   		current == END_IMPORT_FMT);
+}
+
+static int editor_delete_char_or_selection
+(
+	Editor* editor,
+	char prev, // used only if !editor->sel.active
+	char current
+) 
+{
 	int ret;
 
 	if (editor->sel.active) {
@@ -1307,15 +1560,41 @@ static int editor_delete_char_or_selection(Editor* editor) {
 
 	} else {
 		if (editor->cursor.x > 0) {
-			ret = file_delete_char(&editor->file, &editor->cursor,
-				&editor->result);
+			if (is_between_delimiters(prev, current)) {
+				// the size of a delimiter is assumed to be equal
+				// to 1
+				editor->cursor.x++;
 
-			if (ret < 0) {
-				return ret;
+				for (size_t i = 0; i < 2; i++) {
+					ret = file_delete_char(&editor->file,
+						&editor->cursor,
+						&editor->result);
+
+					if (ret < 0) {
+						return EIE_FATAL_ERROR;
+					}
+				}
+			} else {
+				ret = file_delete_char(&editor->file, &editor->cursor,
+					&editor->result);
+
+				if (ret < 0) {
+					return ret;
+				}
+			}
+
+			if (editor->view.col_offset > 0 && editor->cursor.x == editor->view.col_offset - 1)
+			{
+				if (editor->view.col_offset > editor->tsize.cols) {
+					editor->view.col_offset -= editor->tsize.cols - TAB_SIZE;
+				} else {
+					editor->view.col_offset = 0;
+				}
 			}
 
 			if (editor->debug_mode) {
-				log_write(&editor->log, "editor_delete_char_or_selection: SUCCESS");
+				log_write(&editor->log, 
+					"editor_delete_char_or_selection: SUCCESS");
 			}
 
 			return 0;
@@ -1345,7 +1624,7 @@ static int editor_delete_char_or_selection(Editor* editor) {
 static int editor_insert_tab(Editor* editor) {
 	int ret;
 
-	for (int i = 0; i < TAB_SIZE; i++) {
+	for (size_t i = 0; i < TAB_SIZE; i++) {
 		ret = file_insert_char(&editor->file, &editor->cursor, ' ',
 			&editor->result);
 
@@ -1529,6 +1808,159 @@ static int editor_unindent_selection_or_line(Editor* editor) {
 	}
 }
 
+static int is_open_delimiter(int c) {
+	return (c == '{' || c == '[' || c == '(' ||
+			c == ':');
+}
+
+// checks if there is a open delimiter before the current char
+// and if there are only whitespaces between them
+static int has_open_delimiter_in_line(size_t x, const Line* line) {
+	if (x == 0) {
+		return 0;
+	}
+
+	for (size_t i = 1; i <= x; i++) {
+		char c = line->text[x - i];
+
+		if (is_open_delimiter(c)) {
+			return 1;
+		} else if (isspace((unsigned) c)) {
+			continue;
+		} else {
+			return 0;
+		}
+	}
+
+	return 0;
+}
+
+static int editor_find_next_pattern_match
+(
+	Editor* editor, 
+	const char* pattern
+) 
+{
+	if (pattern == NULL || *pattern == '\0') {
+		return 0;
+	}
+	
+	size_t start_y = editor->cursor.y;
+	int first = 1;
+
+	for (size_t i = start_y; i < editor->file.lines.size; i++) {
+		const Line* line = vector_get(&editor->file.lines, i);
+
+		const char* text = line->text;
+		size_t len = strlen(pattern);
+
+		while ((text = strstr(text, pattern)) != NULL) {
+			if (first) {
+				first = 0;
+				text += len;
+				continue;
+			}
+
+			size_t start = text - line->text;
+			size_t end = start + len - 1;
+			size_t y = i;
+
+			editor->cursor.x = start;
+			editor->cursor.y = i;	
+
+			editor->sel.active = 1;
+			editor->selecting = 0;			
+			editor->sel.start_x = start;
+			editor->sel.end_x = end + 1;
+			editor->sel.start_y = y;
+			editor->sel.end_y = y;
+
+			text += len;
+			return 0;
+		}
+	}
+
+	if (start_y == 0) {
+		return 0;
+	}
+
+	for (size_t i = 0; i < start_y; i++) {
+		const Line* line = vector_get(&editor->file.lines, i);
+
+		const char* text = line->text;
+		size_t len = strlen(pattern);
+
+		while ((text = strstr(text, pattern)) != NULL) {
+			size_t start = text - line->text;
+			size_t end = start + len - 1;
+			size_t y = i;
+
+			editor->cursor.x = start;
+			editor->cursor.y = i;	
+
+			editor->sel.active = 1;
+			editor->selecting = 0;			
+			editor->sel.start_x = start;
+			editor->sel.end_x = end + 1;
+			editor->sel.start_y = y;
+			editor->sel.end_y = y;
+
+			text += len;
+			return 0;
+		}
+	}
+
+	return 0;		
+}
+
+static int editor_find_all_pattern_matches
+(
+	Editor* editor, 
+	const char* pattern
+) 
+{
+	if (pattern == NULL || *pattern == '\0') {
+		return 0;
+	}
+
+	vector_init(&editor->patterns, sizeof(PatternMatch), NULL);
+
+	int first = 1;
+
+	for (size_t i = 0; i < editor->file.lines.size; i++) {
+		const Line* line = vector_get(&editor->file.lines, i);
+
+		const char* text = line->text;
+		size_t len = strlen(pattern);
+
+		while ((text = strstr(text, pattern)) != NULL) {
+			PatternMatch pm;
+			pm.start = text - line->text;
+			pm.end = pm.start + len - 1;
+			pm.y = i;
+
+			if (first) {
+				editor->cursor.x = pm.start;
+				editor->cursor.y = i;	
+				first = 0;
+				editor->actual_pattern = 0;
+
+				editor->sel.active = 1;
+				editor->selecting = 0;
+				editor->sel.start_x = pm.start;
+				editor->sel.end_x = pm.end + 1;
+				editor->sel.start_y = i;
+				editor->sel.end_y = i;				
+			}
+
+			vector_push(&editor->patterns, &pm);
+			text += len;
+		}
+	}
+
+	return 0;
+}
+
 static int editor_insert_newline(Editor* editor, const Line* line) {
 	int ret;
 	int is_brace_pair = 
@@ -1536,18 +1968,38 @@ static int editor_insert_newline(Editor* editor, const Line* line) {
 		(line->text[editor->cursor.x - 1] == '{' &&
 		 line->text[editor->cursor.x] == '}');
 
-	int indent = line_get_indent(line);
-	ret = file_insert_newline(&editor->file, &editor->cursor, &editor->result);
+
+	size_t indent = line_get_indent(line);
+
+	int prev_has_open_delimiter = has_open_delimiter_in_line(
+		editor->cursor.x,
+		line);
+
+	// the actual content of the line is empty
+	int prev_is_empty = line->len == indent;
+
+	// after file_insert_newline, maybe the editor->files.lines
+	// has been realocated, so the argument 'line' is now a invalid 
+	// pointer
+	size_t start_cursor_y = editor->cursor.y;
+
+	ret = file_insert_newline(&editor->file, 
+		&editor->cursor, &editor->result);
 
 	if (ret < 0) {
 		return ret;
 	}
 
+	// this would not stop the code from breaking later on,
+	// it's just a visual warning that 'line' should not
+	// be used anymore
+	line = NULL;
+
 	editor->cursor.y++;
 	editor->cursor.x = 0;
 
 	if (is_brace_pair) {
-		for (int i = 0; i < indent; i++) {
+		for (size_t i = 0; i < indent; i++) {
 			ret = file_insert_char(&editor->file, &editor->cursor, ' ',
 				&editor->result);
 
@@ -1579,7 +2031,7 @@ static int editor_insert_newline(Editor* editor, const Line* line) {
 		editor->cursor.y--;
 
 		editor->cursor.x = indent;
-		for (int i = 0; i < TAB_SIZE; i++) {
+		for (size_t i = 0; i < TAB_SIZE; i++) {
 			ret = file_insert_char(&editor->file, &editor->cursor, ' ',
 				&editor->result);
 
@@ -1588,13 +2040,41 @@ static int editor_insert_newline(Editor* editor, const Line* line) {
 			}
 		}
 	} else {
-		for (int i = 0; i < indent; i++) {
+		for (size_t i = 0; i < indent; i++) {
 			ret = file_insert_char(&editor->file, &editor->cursor, ' ',
 				&editor->result);
 
 			if (ret < 0) {
 				return ret;
 			}
+		}
+
+		if (prev_has_open_delimiter) 
+		{
+			for (size_t i = 0; i < TAB_SIZE; i++) {
+				ret = file_insert_char(&editor->file, 
+					&editor->cursor, ' ',
+					&editor->result);
+
+				if (ret < 0) {
+					return ret;
+				}
+			}
+		}
+
+		if (indent && prev_is_empty) {
+			Line* prev_line = vector_get(&editor->file.lines, 
+				start_cursor_y);
+
+			if (!prev_line) {
+				result_set_reason(&editor->result,
+				"editor_insert_newline: prev_line is a null pointer");
+				editor->result.type = ERROR_NULL_POINTER;
+
+				return EIE_FATAL_ERROR;				
+			}
+
+			line_set_indent(prev_line, 0);
 		}
 	}
 
@@ -1605,11 +2085,221 @@ static int editor_insert_newline(Editor* editor, const Line* line) {
 	return 0;
 }
 
+static void editor_select_word(Editor* editor) {
+	size_t start = 0;
+	size_t end = 0;
+	size_t y = editor->cursor.y;
+	size_t x = editor->cursor.x;
+
+	const Line* line = vector_get(&editor->file.lines, y);
+
+	if (is_word_char(line->text[x])) {
+		for (size_t i = x; i-- > 0;) {
+			if (!is_word_char(line->text[i])) {
+				start = i + 1;
+				break;
+			}
+		}
+
+		for (size_t i = x; i < line->len; i++) {
+			if (!is_word_char(line->text[i])) {
+				end = i;
+				break;
+			}
+		}
+	}
+
+	else {
+		for (size_t i = x; i-- > 0;) {
+			if (is_word_char(line->text[i])) {
+				start = i + 1;
+				break;
+			}
+		}
+
+		for (size_t i = x; i < line->len; i++) {
+			if (is_word_char(line->text[i])) {
+				end = i;
+				break;
+			}
+		}
+
+		if (line->len > 1 && end == 0) {
+			end = (x == line->len - 1) ?
+				x : x + 1;
+		}
+	}
+
+	if (start != end) {
+		editor->sel.active = 1;
+		editor->selecting = 0;
+		editor->sel.start_x = start;
+		editor->sel.end_x = end;
+		editor->sel.start_y = y;
+		editor->sel.end_y = y;
+	} else {
+		selection_clear(&editor->sel);
+		editor->selecting = 0;
+	}
+}
+
+static int editor_handle_find_pattern(Editor* editor, int key) {
+	if (key == '\n' || key == '\r') {
+		if (editor->actual_pattern >= 0) {
+			return 1;
+		}
+
+		editor_find_all_pattern_matches(editor, editor->pt.buf);
+	} else if (key == CTRL_KEY('q') || key == CTRL_KEY('f')) {
+		editor->pt.active = 0;
+
+		if (editor->actual_pattern >= 0) {
+			editor->actual_pattern = -1;
+			vector_free(&editor->patterns);
+		}
+
+	} else if (key == 127) {
+		if (editor->pt.len > 0) {
+			editor->pt.len--;
+			editor->pt.buf[editor->pt.len] = '\0';
+		}
+	} else if (editor->actual_pattern >= 0 && 
+			   editor->patterns.size > 0 &&
+			   CTRL_KEY('d')) 
+	{
+		size_t index = (size_t) ++editor->actual_pattern;
+		log_write(&editor->log, "index: %ld", index);
+
+		size_t to_get = (index == editor->patterns.size) ?
+			0 : index;
+
+		if (index == editor->patterns.size) {
+			editor->actual_pattern = 0;
+		}
+
+		const PatternMatch* pm = vector_get(&editor->patterns, 
+			to_get);
+
+		editor->cursor.x = pm->start;
+		editor->cursor.y = pm->y;
+
+		editor->sel.active = 1;
+		editor->sel.start_x = pm->start;
+		editor->sel.end_x = pm->end + 1;;
+		editor->sel.start_y = pm->y;
+		editor->sel.end_y = pm->y;
+	} else if (key >= 32 && key <= 126) {
+		if (editor->pt.len < sizeof(editor->pt.buf) - 1) 
+		{
+			editor->pt.buf[editor->pt.len++] = key;
+			editor->pt.buf[editor->pt.len] = '\0';
+		}
+	} 
+
+	return 1;	
+}
+
+static int is_valid_number_goto(const char* s) {
+	if (s == NULL || *s == '\0') {
+		return 0;
+	}
+
+	char* end;
+	errno = 0;
+
+	long val = strtol(s, &end, 10);
+
+	if (end == s) return 0;
+	if (*end != '\0') return 0;
+	if (errno == ERANGE) return 0;
+	if (val < 0) return 0;
+
+	return 1;
+}
+
+static int editor_handle_goto(Editor* editor, int key) {
+	if ((key == '\n' || key == '\r')) {
+		if (editor->pt.len == 0) {
+			editor->cursor.y = 0;
+		}
+
+		else if (is_valid_number_goto(editor->pt.buf)) {
+			size_t y = atoi(editor->pt.buf);
+
+			if (y == 0) {
+				editor->cursor.y = editor->file.lines.size - 1;
+			} 
+
+			else {
+				editor->cursor.y = (y >= editor->file.lines.size) ? 
+					editor->file.lines.size - 1: y - 1;	
+			}
+		}
+
+		editor->cursor.x = 0;
+		editor->pt.active = 0;
+	} else if (key == CTRL_KEY('q') || key == CTRL_KEY('g')) {
+		editor->pt.active = 0;
+	} else if (key >= 32 && key <= 126) {
+		if (editor->pt.len < sizeof(editor->pt.buf) - 1) 
+		{
+			editor->pt.buf[editor->pt.len++] = key;
+			editor->pt.buf[editor->pt.len] = '\0';
+		}
+	} else if (key == 127) {
+		if (editor->pt.len > 0) {
+			editor->pt.len--;
+			editor->pt.buf[editor->pt.len] = '\0';
+		}
+	}
+
+	return 1;
+}
+
 int editor_handle_input(Editor* editor, int key) {
+	if (editor->pt.active) {
+		if (strcmp(editor->pt.label, "find: ") == 0) {
+			return editor_handle_find_pattern(editor, key);
+		}
+
+		if (strcmp(editor->pt.label, "goto: ") == 0) {
+			return editor_handle_goto(editor, key);
+		}
+
+		if (strcmp(editor->pt.label, "saved") == 0) {
+			if (key == CTRL_KEY('q')) {
+				return editor_quit(editor);
+			}
+			
+			editor->pt.active = 0;
+		}
+
+		return 1;
+	}
+
 	if (key == CTRL_KEY('q')) {
 		return editor_quit(editor);
 	}
 
+	if (key == CTRL_KEY('g')) {
+		prompt_init(&editor->pt, "goto: ");
+		return 1;
+	}
+
+	if (key == CTRL_KEY('f')) {
+		selection_clear(&editor->sel);
+		editor->selecting = 0;
+		prompt_init(&editor->pt, "find: ");
+		return 1;
+	}
+
+	// as much as the program, inside this functions, could
+	// do some realloc inside editor->files.lines vector,
+	// the 'line' would be used in only one case
+	// of the switch case, so it's not necessary
+	// to care about the validity of the pointer
+	// (as long the case don't use it after a
+	// function that may realloc the vector)
 	Line* line = vector_get(&editor->file.lines, editor->cursor.y);
 
 	if (!line) {
@@ -1625,6 +2315,9 @@ int editor_handle_input(Editor* editor, int key) {
 	int ret;
 
 	switch (key) {
+		case START_CHAR_FMT:
+		case START_STRING_FMT:
+		case START_IMPORT_FMT:
 		case '{':
 		case '(':
 		case '[': {
@@ -1632,7 +2325,7 @@ int editor_handle_input(Editor* editor, int key) {
 
 			if (ret < 0) {
 				result_set_reason(&editor->result,
-					"editor_handle_input: error return by static function");
+				"editor_handle_input: error return by static function");
 
 				editor->result.type = ERROR_STATIC;
 
@@ -1644,6 +2337,7 @@ int editor_handle_input(Editor* editor, int key) {
 			break;
 		}
 
+		case END_IMPORT_FMT:
 		case '}':
 		case ')':
 		case ']': {
@@ -1651,7 +2345,7 @@ int editor_handle_input(Editor* editor, int key) {
 
 			if (ret < 0) {
 				result_set_reason(&editor->result,
-					"editor_handle_input: error return by static function");
+				"editor_handle_input: error return by static function");
 
 				editor->result.type = ERROR_STATIC;
 
@@ -1663,12 +2357,44 @@ int editor_handle_input(Editor* editor, int key) {
 			break;
 		}
 
+		case CTRL_KEY('t'):
+			editor->show_tabs = !editor->show_tabs;
+			break;
+
 		case CTRL_KEY('w'):
 			editor_move_cursor_to_beginning_of_line(editor);
 			break;
 
 		case CTRL_KEY('e'):
 			editor_move_cursor_to_indent_of_line(editor, line);
+			break;
+
+		case CTRL_KEY('r'):
+			if (editor->sel.active) {
+				if (editor->sel.start_y != editor->sel.end_y ||
+					editor->sel.start_x == editor->sel.end_x) {
+					break;
+				}
+
+				editor->selecting = 0;
+				size_t start = (editor->sel.start_x > editor->sel.end_x) ?
+					editor->sel.end_x : editor->sel.start_x;
+
+				size_t len = (start == editor->sel.start_x) ?
+					(editor->sel.end_x - editor->sel.start_x) :
+					(editor->sel.start_x - editor->sel.end_x);
+
+				const Line* line = vector_get(&editor->file.lines,
+					editor->sel.start_y);
+
+				char pattern[len + 1];
+				memcpy(pattern, line->text + start, len);
+				pattern[len] = '\0';
+
+				editor_find_next_pattern_match(editor, pattern);
+			} else {
+				editor_select_word(editor);
+			}
 			break;
 
 		case CTRL_KEY('d'):
@@ -1716,6 +2442,10 @@ int editor_handle_input(Editor* editor, int key) {
 			break;
 
 		case CTRL_KEY('s'):
+			if (editor->file.dirty) {
+				prompt_init(&editor->pt, "saved");
+			}
+
 			ret = editor_save_file(editor);
 
 			if (ret == EIE_FATAL_ERROR) {
@@ -1727,8 +2457,8 @@ int editor_handle_input(Editor* editor, int key) {
 		case '\t':
 			ret = editor_insert_tab(editor);
 
-			if (ret == EIE_FATAL_ERROR) {
-				return 0;
+			if (ret < 0) {
+				return ret;
 			}
 
 			break;
@@ -1764,6 +2494,8 @@ int editor_handle_input(Editor* editor, int key) {
 		case '\r': {
 			ret = editor_insert_newline(editor, line);
 
+			// line is invalid now
+
 			if (ret == EIE_FATAL_ERROR) {
 				return 0;
 			}
@@ -1772,7 +2504,18 @@ int editor_handle_input(Editor* editor, int key) {
 		}
 
 		case 127:
-			ret = editor_delete_char_or_selection(editor);
+			if (!editor->sel.active &&
+				editor->cursor.x > 0 && 
+				editor->cursor.x < line->len) 
+			{
+				ret = editor_delete_char_or_selection(editor,
+					line->text[editor->cursor.x - 1],
+					line->text[editor->cursor.x]);
+			} else {
+				ret = editor_delete_char_or_selection(editor,
+					' ',
+					' ');
+			}
 
 			if (ret == EIE_FATAL_ERROR) {
 				return 0;
@@ -1844,9 +2587,20 @@ int editor_handle_input(Editor* editor, int key) {
 					return 0;
 				}
 
+				if (editor->cursor.x - editor->view.col_offset >= 
+						editor->tsize.cols)
+				{
+					editor->view.col_offset += editor->tsize.cols - TAB_SIZE;
+				}
+
+				if (editor->selecting) {
+					selection_update(&editor->sel, &editor->cursor);
+				}
+
 				if (editor->debug_mode) {
 					log_write(&editor->log, 
-						"editor_handle_input: a char has been written (%c)", key);
+					"editor_handle_input: a char has been written (%c)", 
+						key);
 				}
 			}
 
