@@ -83,6 +83,7 @@ the possible operations inside the program are:
 - move cursor to the beginning of the line (CTRL + w)
 - move cursor to the beginning of the indentation of the line (CTRL + e)
 - move cursor to the end of the line (CTRL + d)
+- start/end a selection (CTRL + SPACE)
 - select all file (CTRL + a)
 - select the actual line (CTRL + l)
 - copy the actual selection (CTRL + c)
