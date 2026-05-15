@@ -1,7 +1,7 @@
 #ifndef SELECTION_H
 #define SELECTION_H
 
-#include "cursor.h"
+#include "editor/cursor.h"
 
 // definition of a Selection and functions to handle it
 

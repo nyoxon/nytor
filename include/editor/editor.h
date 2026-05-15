@@ -1,10 +1,10 @@
 #ifndef EDITOR_H
 #define EDITOR_H
 
-#include "file.h"
-#include "scroll.h"
-#include "error.h"
-#include "debug.h"
+#include "editor/file.h"
+#include "editor/scroll.h"
+#include "util/error.h"
+#include "util/debug.h"
 
 // in syntax_high.c
 extern const char* MACROS[];
@@ -38,6 +38,8 @@ typedef struct {
 
 	Vector patterns;
 	int actual_pattern;
+
+	int create_file;
 } Editor;
 
 int editor_init

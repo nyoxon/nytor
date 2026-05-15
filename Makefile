@@ -1,24 +1,28 @@
-CC := gcc
-CFLAGS := -Wall -Wextra -g
+CC      := gcc
+CFLAGS  := -Wall -Wextra -Iinclude -g
+LDFLAGS :=
 
-TARGET = nytor
+SRC_DIR := src
+OBJ_DIR := build/obj
+BIN_DIR := build
 
-SRCDIR = src
-OBJDIR = build
+TARGET  := $(BIN_DIR)/nytor
 
-SRCS = main.c file.c input.c debug.c syntax_high.c editor.c error.c vector.c cursor.c scroll.c buffer.c selection.c
-OBJS = $(SRCS:%.c=$(OBJDIR)/%.o)
+SRCS := $(shell find $(SRC_DIR) -name '*.c')
+
+OBJS := $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SRCS))
 
 all: $(TARGET)
 
 $(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $^
-	
-$(OBJDIR)/%.o: $(SRCDIR)/%.c | $(OBJDIR)
+	@mkdir -p $(BIN_DIR)
+	$(CC) $(OBJS) -o $@ $(LDFLAGS)
+
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
+	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(OBJDIR):
-	mkdir -p $(OBJDIR)
-
 clean:
-	rm -rf $(OBJDIR) $(TARGET)
+	rm -rf build
+
+.PHONY: all clean

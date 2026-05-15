@@ -1,7 +1,7 @@
 #ifndef SYNTAX_HIGH_H
 #define SYNTAX_HIGH_H
 
-#include "buffer.h"
+#include "util/buffer.h"
 
 /*
 AUXILIARY DEFINITIONS AND FUNCTIONS TO HANDLE SYNTAX HIGHLIGHT

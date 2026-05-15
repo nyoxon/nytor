@@ -1,4 +1,4 @@
-#include "syntax_high.h"
+#include "terminal/syntax_high.h"
 #include <stddef.h>
 #include <unistd.h>
 #include <string.h>

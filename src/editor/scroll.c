@@ -1,4 +1,4 @@
-#include "scroll.h"
+#include "editor/scroll.h"
 #include <stdio.h>
 #include <sys/ioctl.h>
 #include <unistd.h>

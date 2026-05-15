@@ -1,6 +1,6 @@
-#include "editor.h"
-#include "input.h"
-#include "syntax_high.h"
+#include "editor/editor.h"
+#include "terminal/input.h"
+#include "terminal/syntax_high.h"
 #include <unistd.h>
 #include <stdio.h>
 #include <string.h>
@@ -51,6 +51,7 @@ int editor_init
 
 	editor->show_tabs = 0;
 	editor->actual_pattern = -1;
+
 	return 0;
 }
 
@@ -156,6 +157,28 @@ static int check_is_macro(const char* word, size_t len) {
 	return 0;	
 }
 
+ssize_t find_matching_brace(const char* s, size_t start) {
+	if (!s) {
+		return -1;
+	}
+
+	int depth = 0;
+
+	for (size_t i = start; s[i] != '\0'; i++) {
+		if (s[i] == '{') {
+			depth++;
+		} else if (s[i] == '}') {
+			depth--;
+
+			if (depth == 0) {
+				return (ssize_t)i;
+			}
+		}
+	}
+
+	return -1;
+}
+
 void editor_render(Editor* editor) {
 	clean_terminal();
 	write(STDOUT_FILENO, "\033[H", 3);
@@ -192,7 +215,7 @@ void editor_render(Editor* editor) {
 		// prints a ' ' in a selected empty line
 		if (line->len == 0 && 
 			editor->sel.active && 
-			check_line_in_selection(y, editor->sel.start_y,
+			check_line_in_selection(file_row, editor->sel.start_y,
 									   editor->sel.end_y))
 		{
 			invert_color();
@@ -964,7 +987,8 @@ static int editor_select_all_file(Editor* editor) {
 
 		return 0;
 	} else {
-		int ret = file_select_all_file(&editor->file, &editor->sel, &editor->cursor,
+		int ret = file_select_all_file(&editor->file, &editor->sel, 
+			&editor->cursor,
 			&editor->result);
 
 		if (ret < 0) {
@@ -992,11 +1016,33 @@ static int editor_select_line(Editor* editor) {
 
 		return 0;
 	} else {
-		int ret = file_select_line(&editor->file, editor->cursor.y, &editor->sel,
+		int ret = file_select_line(&editor->file, editor->cursor.y, 
+			&editor->sel,
 			&editor->result);
 
 		if (ret < 0) {
 			return ret;
+		}
+
+		size_t y = editor->cursor.y;
+
+		const Line* line = vector_get(&editor->file.lines, 
+			y);
+
+		if (editor->file.lines.size > 0 &&
+			line->len == 0 && 
+			y >= editor->view.row_offset && 
+			y < editor->view.row_offset + editor->tsize.rows)
+		{
+			if (y == editor->file.lines.size - 1 && y > 0) {
+				const Line* prev = vector_get(&editor->file.lines,
+					y - 1);
+
+				editor->sel.end_y = y - 1;
+				editor->sel.end_x = prev->len;
+			} else {
+				editor->sel.end_y = y + 1;
+			}
 		}
 
 		editor->selecting = 1;
@@ -1011,7 +1057,8 @@ static int editor_select_line(Editor* editor) {
 
 static int editor_copy_selection(Editor* editor) {
 	if (editor->sel.active) {
-		int ret = file_copy_selection(&editor->file, &editor->cb, &editor->sel,
+		int ret = file_copy_selection(&editor->file, &editor->cb, 
+			&editor->sel,
 			&editor->result);
 
 		if (ret < 0) {
@@ -1181,7 +1228,9 @@ static void editor_scroll_up(Editor* editor) {
 	if (editor->view.row_offset > 0) {
 		editor->view.row_offset--;
 
-		if (editor->cursor.y > editor->view.row_offset + editor->tsize.rows - 1) {
+		if (editor->cursor.y > editor->view.row_offset + 
+			editor->tsize.rows - 1) 
+		{
 			editor->cursor.y--;
 			editor->cursor.x = 0;
 		}
@@ -1361,7 +1410,7 @@ static int editor_move_line_or_selection_down(Editor* editor) {
 		if (y2 >= editor->file.lines.size - 1) {
 			if (editor->debug_mode) {
 				log_write(&editor->log,
-			"editor_move_line_or_selection_down: y2 >= lines.size - 1 (NOT A ERROR)");
+"editor_move_line_or_selection_down: y2 >= lines.size - 1 (NOT A ERROR)");
 			}
 
 			return 0;
@@ -1443,7 +1492,7 @@ static int editor_comment_line_or_selection(Editor* editor) {
 
 			if (!line) {
 				result_set_reason(&editor->result,
-					"editor_comment_line_or_selection: line is a null pointer");
+			"editor_comment_line_or_selection: line is a null pointer");
 				editor->result.type = ERROR_NULL_POINTER;
 
 				return EIE_FATAL_ERROR;
@@ -1553,7 +1602,7 @@ static int editor_delete_char_or_selection
 		}
 
 		if (editor->debug_mode) {
-			log_write(&editor->log, "editor_delete_char_or_selection: SUCCESS");
+	log_write(&editor->log, "editor_delete_char_or_selection: SUCCESS");
 		}
 
 		return 0;
@@ -1583,10 +1632,12 @@ static int editor_delete_char_or_selection
 				}
 			}
 
-			if (editor->view.col_offset > 0 && editor->cursor.x == editor->view.col_offset - 1)
+			if (editor->view.col_offset > 0 && 
+				editor->cursor.x == editor->view.col_offset - 1)
 			{
 				if (editor->view.col_offset > editor->tsize.cols) {
-					editor->view.col_offset -= editor->tsize.cols - TAB_SIZE;
+					editor->view.col_offset -= editor->tsize.cols - 
+						TAB_SIZE;
 				} else {
 					editor->view.col_offset = 0;
 				}
@@ -1607,7 +1658,7 @@ static int editor_delete_char_or_selection
 			}
 
 			if (editor->debug_mode) {
-				log_write(&editor->log, "editor_delete_char_or_selection: SUCCESS");
+	log_write(&editor->log, "editor_delete_char_or_selection: SUCCESS");
 			}
 
 			return 0;
@@ -1615,26 +1666,7 @@ static int editor_delete_char_or_selection
 	}
 
 	if (editor->debug_mode) {
-		log_write(&editor->log, "editor_delete_char_or_selection: SUCCESS");
-	}
-
-	return 0;
-}
-
-static int editor_insert_tab(Editor* editor) {
-	int ret;
-
-	for (size_t i = 0; i < TAB_SIZE; i++) {
-		ret = file_insert_char(&editor->file, &editor->cursor, ' ',
-			&editor->result);
-
-		if (ret < 0) {
-			return ret;
-		}
-	}
-
-	if (editor->debug_mode) {
-		log_write(&editor->log, "editor_insert_tab: SUCCESS");
+	log_write(&editor->log, "editor_delete_char_or_selection: SUCCESS");
 	}
 
 	return 0;
@@ -1743,7 +1775,7 @@ static int editor_unindent_selection_or_line(Editor* editor) {
 
 		if (!line) {
 			result_set_reason(&editor->result,
-			"editor_unindent_selection_or_line: line is a null pointer");
+		"editor_unindent_selection_or_line: line is a null pointer");
 			editor->result.type = ERROR_NULL_POINTER;
 
 			return EIE_NOT_FATAL_ERROR;
@@ -2000,7 +2032,8 @@ static int editor_insert_newline(Editor* editor, const Line* line) {
 
 	if (is_brace_pair) {
 		for (size_t i = 0; i < indent; i++) {
-			ret = file_insert_char(&editor->file, &editor->cursor, ' ',
+			ret = file_insert_char(&editor->file, 
+				&editor->cursor, ' ',
 				&editor->result);
 
 			if (ret < 0) {
@@ -2017,7 +2050,8 @@ static int editor_insert_newline(Editor* editor, const Line* line) {
 
 		editor->cursor.y++;
 
-		Line* closing = vector_get(&editor->file.lines, editor->cursor.y);
+		Line* closing = vector_get(&editor->file.lines, 
+			editor->cursor.y);
 
 		if (!closing) {
 			result_set_reason(&editor->result,
@@ -2032,7 +2066,8 @@ static int editor_insert_newline(Editor* editor, const Line* line) {
 
 		editor->cursor.x = indent;
 		for (size_t i = 0; i < TAB_SIZE; i++) {
-			ret = file_insert_char(&editor->file, &editor->cursor, ' ',
+			ret = file_insert_char(&editor->file, 
+				&editor->cursor, ' ',
 				&editor->result);
 
 			if (ret < 0) {
@@ -2041,7 +2076,8 @@ static int editor_insert_newline(Editor* editor, const Line* line) {
 		}
 	} else {
 		for (size_t i = 0; i < indent; i++) {
-			ret = file_insert_char(&editor->file, &editor->cursor, ' ',
+			ret = file_insert_char(&editor->file, 
+				&editor->cursor, ' ',
 				&editor->result);
 
 			if (ret < 0) {
@@ -2256,6 +2292,70 @@ static int editor_handle_goto(Editor* editor, int key) {
 	return 1;
 }
 
+static void editor_move_between_words_right(Editor* editor) {
+	size_t end = 0;
+	size_t y = editor->cursor.y;
+	size_t x = editor->cursor.x;
+
+	const Line* line = vector_get(&editor->file.lines, y);
+
+	if (is_word_char(line->text[x])) {
+		for (size_t i = x; i < line->len; i++) {
+			if (!is_word_char(line->text[i])) {
+				end = i;
+				break;
+			}
+		}
+	} else {
+		for (size_t i = x; i < line->len; i++) {
+			if (is_word_char(line->text[i])) {
+				end = i;
+				break;
+			}
+		}
+	}
+
+	if (end == 0) {
+		return;
+	}
+
+	editor->cursor.x = end;
+}
+
+static void editor_move_between_words_left(Editor* editor) {
+	if (editor->cursor.x == 0) {
+		return;
+	}
+
+	size_t start = 0;
+	size_t y = editor->cursor.y;
+	size_t x = editor->cursor.x;
+
+	const Line* line = vector_get(&editor->file.lines, y);
+
+	if (is_word_char(line->text[x - 1])) {
+		for (size_t i = x; i-- > 0;) {
+			if (!is_word_char(line->text[i])) {
+				start = i + 1;
+				break;
+			}
+		}
+	} else {
+		for (size_t i = x; i-- > 0;) {
+			if (is_word_char(line->text[i])) {
+				start = i + 1;
+				break;
+			}
+		}
+	}
+
+	if (start == line->len - 1) {
+		return;
+	}
+
+	editor->cursor.x = start;
+}
+
 int editor_handle_input(Editor* editor, int key) {
 	if (editor->pt.active) {
 		if (strcmp(editor->pt.label, "find: ") == 0) {
@@ -2267,14 +2367,8 @@ int editor_handle_input(Editor* editor, int key) {
 		}
 
 		if (strcmp(editor->pt.label, "saved") == 0) {
-			if (key == CTRL_KEY('q')) {
-				return editor_quit(editor);
-			}
-			
 			editor->pt.active = 0;
 		}
-
-		return 1;
 	}
 
 	if (key == CTRL_KEY('q')) {
@@ -2454,16 +2548,8 @@ int editor_handle_input(Editor* editor, int key) {
 
 			break;
 
-		case '\t':
-			ret = editor_insert_tab(editor);
-
-			if (ret < 0) {
-				return ret;
-			}
-
-			break;
-
 		case CTRL_KEY('p'):
+		case '\t':
 			ret = editor_indent_selection_or_line(editor);
 
 			if (ret == EIE_FATAL_ERROR) {
@@ -2571,6 +2657,14 @@ int editor_handle_input(Editor* editor, int key) {
 				return 0;
 			}
 
+			break;
+
+		case KEY_CTRL_ARROW_RIGHT:
+			editor_move_between_words_right(editor);
+			break;
+
+		case KEY_CTRL_ARROW_LEFT:
+			editor_move_between_words_left(editor);
 			break;
 
 		default:

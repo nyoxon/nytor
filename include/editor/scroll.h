@@ -6,7 +6,7 @@
 // View must be a logical representation of the part of the editor
 // that are indeed visible by the user
 
-#include "cursor.h"
+#include "editor/cursor.h"
 
 typedef struct {
 	size_t row_offset;

@@ -9,11 +9,11 @@
 // maybe the use of Result is useless inside these functions, but
 // i don't care
 
-#include "vector.h"
-#include "cursor.h"
-#include "buffer.h"
-#include "selection.h"
-#include "error.h"
+#include "util/vector.h"
+#include "util/error.h"
+#include "util/buffer.h"
+#include "editor/cursor.h"
+#include "editor/selection.h"
 
 #define TAB_SIZE 4
 

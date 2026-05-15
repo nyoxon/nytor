@@ -1,4 +1,4 @@
-#include "cursor.h"
+#include "editor/cursor.h"
 
 // certains conditions must be satisfied for the program to work
 // specifically, c != NULL.

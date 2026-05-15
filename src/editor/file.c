@@ -1,4 +1,4 @@
-#include "file.h"
+#include "editor/file.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1537,9 +1537,8 @@ int file_select_line
 
 	sel->active = 1;
 	sel->start_y = y;
-	sel->end_y = y;
-
 	sel->start_x = 0;
+	sel->end_y = y;
 	sel->end_x = line->len;
 
 	result_ok(result);
