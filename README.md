@@ -98,7 +98,7 @@ the possible operations inside the program are:
 - scroll the file down a TERMINAL_SIZE (ALT + ARROW_DOWN)
 - move a line or selection up (CTRL + SHIFT + ARROW_UP)
 - move a line or selection down (CTRL + SHIFT + ARROW_DOWN)
-- move between words (CTRL + SHIFT + ARROW_RIGHT/ARROW_LEFT)
+- move between words (CTRL + ARROW_RIGHT/ARROW_LEFT)
 - delete a char, selection or line (BACKSPACE)
 - insert a char (just write something)
 - move the cursor (use the arrows)
