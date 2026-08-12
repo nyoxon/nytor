@@ -25,7 +25,7 @@ make debug
 then:
 
 ```bash
-./nytor [FILENAME] [FLAGS]
+./nytor [ARGUMENTS] [FILEPATHS]
 ```
 
 to clean object files:
