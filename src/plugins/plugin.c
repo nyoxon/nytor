@@ -98,11 +98,13 @@ static void vector_plugin_destroy(void* ptr) {
 }
 
 int load_lang_plugins(Vector* out, Vector* plugin_names) {
-	assert(plugin_names->size > 0);
+	vector_init(out, sizeof(LangPluginData), vector_plugin_destroy);
 
 	int ret = 0;
 
-	vector_init(out, sizeof(LangPluginData), vector_plugin_destroy);
+	if (plugin_names->size == 0) {
+		return ret;
+	}
 
 	for (size_t i = 0; i < plugin_names->size; i++) {
 		char** name = vector_get(plugin_names, i);
