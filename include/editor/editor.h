@@ -1,66 +1,104 @@
 #ifndef EDITOR_H
 #define EDITOR_H
 
-#include "editor/file.h"
-#include "editor/scroll.h"
-#include "util/error.h"
-#include "util/debug.h"
+#include <sys/types.h>
 
-// in syntax_high.c
-extern const char* MACROS[];
-extern const char* KEYWORDS[];
-extern const char* COLORS[];
-extern const size_t KEYWORD_COUNT;
-extern const size_t MACROS_COUNT;
+#include "file/file.h"
+#include "editor/core/scroll.h"
+#include "editor/core/config.h"
+#include "editor/core/prompt.h"
+#include "editor/core/editor_file.h"
+#include "window/window.h"
+#include "util/types/clipboard.h"
+#include "util/types/stack.h"
+#include "util/debug/error.h"
+#include "util/debug/debug.h"
+#include "terminal/style.h"
+#include "terminal/input.h"
+#include "plugins/plugin.h"
+
+#define HORIZONTAL_SCROLL_OVERLAP 8
+
+#define DEFAULT_TERMINAL_WIDTH 50
+#define DEFAULT_TERMINAL_HEIGHT 24
+
+#define DEBUG_FILE "debug.ny"
 
 // a Editor represents the editor itself
 // it contains the global state of the program
-
 typedef struct {
-	File file;
+	Vector files;
+	EditorFile* actual_file;
+	size_t actual_file_index;
+
+	int inotify_fd;
+
+	struct config config;
+
 	Cursor cursor;
+	
 	View view;
 	TerminalSize tsize;
-	Selection sel;
+
+	Selection sel; // used on normal selection situations
+
 	Clipboard cb;
 
+	int suspend;
+
 	int selecting;
-	int new_file;
-	int render_line_enumeration;
 	int debug_mode;
-	int show_tabs;
 
 	Result result;
 
 	Log log;
 
-	Prompt pt;
+	Prompt status_bar;
 
-	Vector patterns;
-	int actual_pattern;
+	Vector lang_plugins_data;
 
-	int create_file;
+	int has_window;
+	Window window;
 } Editor;
 
+
+// --- EDITOR FUNCTIONS ---
+
+
+// create a Editor
 int editor_init
 (
-	Editor* editor, 
-	const char* filename, 
-	int render_line_enumeration,
+	Editor* editor,
+	char* filenames[],
+	size_t filename_count,
 	int debug_mode
 );
 
 void editor_free(Editor* editor);
 
-// prints on terminal
-void editor_render(Editor* editor);
-int editor_handle_input(Editor* editor, int key);
+void editor_prompt_init(Editor* editor);
 
-int editor_quit(Editor* editor);
+void editor_file_set_lang_plugin
+(
+	EditorFile* ef,
+	const char* filename,
+	const Vector* lang_plugins_data
+);
+
+void editor_check_inotify(Editor* editor);
+
+ssize_t editor_has_filename(const Editor* editor, const char* filename);
+
+// write a message into the editor's log
 void editor_log_write(const Editor* editor);
 
-void clean_terminal();
-void move_cursor(size_t x, size_t y);
+void editor_create_syntax(Editor* editor);
+void editor_update_syntax(Editor* editor);
+
+size_t editor_cursor_screen_x(Editor* editor);
+void editor_sync_cursor(Editor* editor);
+void editor_clamp_cursor_to_view(Editor* editor);
+
 size_t get_gutter_width(size_t line_count);
 
 #endif
