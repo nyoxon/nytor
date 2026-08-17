@@ -14,8 +14,6 @@
 void window_draw
 (
 	const Window* window,
-	size_t max_width, 
-	size_t max_height,
 	const struct window_color* color
 );
 

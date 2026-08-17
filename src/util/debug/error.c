@@ -7,6 +7,10 @@
 // PRE: result != NULL for all functions
 
 int result_set_reason(Result* result, const char* reason) {
+	if (!result) {
+		return -1;
+	}
+
 	if (result->reason) {
 		free(result->reason);
 	}
@@ -25,6 +29,10 @@ int result_set_reason(Result* result, const char* reason) {
 }
 
 void result_free(Result* result) {
+	if (!result) {
+		return;
+	}
+
 	if (result->reason) {
 		free(result->reason);
 		result->reason = NULL;
@@ -32,6 +40,10 @@ void result_free(Result* result) {
 }
 
 void result_ok(Result* result) {
+	if (!result) {
+		return;
+	}
+	
 	if (result->reason) {
 		free(result->reason);
 		result->reason = NULL;

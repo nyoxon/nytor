@@ -10,8 +10,13 @@
 
 static int posix = 1;
 
-
 /// --- TYPE DEFINITIONS ---
+
+int is_c_word_char(uint32_t c) {
+	unsigned char k = (unsigned char) c;
+
+	return (isalnum(k) || k == '_');
+}
 
 
 // RESERVED FOR INTERNAL KEYWORDS OF THE LANG
@@ -1787,15 +1792,16 @@ static size_t c_tokenize_line
 
 		// identifier
 		if (isalpha((unsigned char) line[i]) || line[i] == '_') {
+			// isalpha is used because a variable/function name in C
+			// cannot start with a number
 
 			size_t begin = i;
 			int is_meth_or_att = 
 				(begin > 0 && line[begin - 1] == '.') ||
 				(begin > 1 && line[begin - 1] == '>' && line[begin - 2] == '-');
 
-			while (i < len &&
-				((unsigned char) isalnum(line[i]) ||
-				line[i] == '_'))
+			// but might contain numbers
+			while (i < len && is_c_word_char(line[i]))
 			{
 				i++;
 			}
@@ -1951,7 +1957,8 @@ static const struct language_rules c_rules = {
 	.pairs = C_PAIRS,
 	.pair_count = C_PAIR_COUNT,
 	.comment_fmt = comment_fmt,
-	.auto_indent = 1
+	.auto_indent = 1,
+	.is_word_char = is_c_word_char
 };
 
 static const struct language_plugin c_plugin = {

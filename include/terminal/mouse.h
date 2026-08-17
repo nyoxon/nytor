@@ -12,8 +12,8 @@
 
 struct mouse_event {
 	int button;
-	int x;
-	int y;
+	int x; // 1 based
+	int y; // 1 based
 
 	int pressed;
 };

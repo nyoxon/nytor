@@ -143,7 +143,7 @@ int operation_can_merge
 (
 	const Operation* a, 
 	const Operation* b,
-	const struct language_rules* rules
+	IsWordChar is_word_char
 );
 
 void operation_merge(Operation* a, Operation* b);

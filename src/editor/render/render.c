@@ -3,11 +3,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <ctype.h>
 #include <sys/param.h>
+#include <assert.h>
 
 #include "editor/render/render.h"
 #include "window/render.h"
 #include "terminal/style.h"
+
+#define RENDER_BUFFER_SIZE 256
 
 static const struct style INVALID_CHAR = {
 	{ .type = COLOR_ANSI, .ansi = BLUE },
@@ -76,6 +80,19 @@ static void index_line
 	reset_color();
 }
 
+static int is_whitespace(uint32_t c) {
+	switch (c) {
+	case U' ':
+	case U'\t':
+	case U'\r':
+	case U'\v':
+	case U'\f':
+		return 1;
+	default:
+		return 0;
+	}
+}
+
 static void apply_style
 (
 	Editor* editor,
@@ -92,14 +109,6 @@ static void apply_style
 		// } else {
 		// 	invert_color();
 		// }
-		return;
-	}
-
-	if (!editor->actual_file->lexer) {
-		write_color(&editor->config.ui.normal);
-	}
-
-	if (hl == HL_NONE) {
 		return;
 	}
 
@@ -144,9 +153,13 @@ static void render_utf
 {
 	size_t last_line;
 
+	uint32_t u32buf[screen_cols];
+	size_t codepoints = 0;
+
 	for (size_t y = 0; y < screen_rows; y++) {
 		size_t file_row = y + editor->view.row_offset;
 		last_line = file_row;
+		int empty_selected_line = 0;
 
 		// log_write(&editor->log, "%zu, %zu", y + 1, screen_rows);
 
@@ -202,6 +215,7 @@ static void render_utf
 				editor->sel.start.y,
 				editor->sel.end.y))
 		{
+			empty_selected_line = 1;
 			write_color(&editor->config.ui.selection);
 			write(STDOUT_FILENO, " ", 1);
 			reset_color();
@@ -235,6 +249,11 @@ static void render_utf
 			}
 
 			if (cursor_screen_x >= editor->view.col_offset + screen_cols) {
+				if (codepoints > 0) {
+					u32_print(u32buf, codepoints);
+					codepoints = 0;
+				}
+
 				break;
 			}
 
@@ -245,8 +264,12 @@ static void render_utf
 				&editor->sel,
 				(Position) { x, file_row });
 
+			if (is_whitespace(c)) {
+				hl = HL_WHITESPACE;
+			}
+
 			// checks if x is in a token
-			if (lexer && tokens && tokens->size > 0) {
+			else if (lexer && tokens && tokens->size > 0) {
 				size_t ntokens = tokens->size;
 				struct token* token = vector_get(tokens, current);
 
@@ -278,6 +301,9 @@ static void render_utf
 				hl != current_highlight ||
 				!editor->actual_file->lexer) 
 			{
+				u32_print(u32buf, codepoints);
+				codepoints = 0;
+
 				apply_style(editor, hl, selected);
 
 				current_selected = selected;
@@ -285,69 +311,52 @@ static void render_utf
 			}
 
 			// substitutes ' ' by '.'
-			if (c == U' ' && editor->config.show_tabs) {
-				if (!selected) 
-				{
-					write_color(&editor->config.ui.spaces_and_tabs);
-				}
-
-				write(STDOUT_FILENO, ".", 1);
-
-				if (!selected && editor->actual_file->lexer) 
-				{
-					apply_style(editor, current_highlight, 0);
-				}
-
-				cursor_screen_x += width;
-				continue;
+			if (c == U' ') {
+				u32buf[codepoints++] = 
+					editor->config.show_tabs ? U'.' :  U' ';
 			}
 
 			// print on screen
-			if (c == U'\t') {
+			else if (c == U'\t') {
 				size_t visible = interval_overlap_width(
 					cursor_screen_x, cursor_screen_x + width,
 					editor->view.col_offset,
 					editor->view.col_offset + screen_cols
 				);
 
-				if (!selected && visible > 0) {
-					write_color(&editor->config.ui.spaces_and_tabs);
-				}
-
 				char to_print = (editor->config.show_tabs)
 					? '.'
 					: ' ';
 
 				for (size_t i = 0; i < visible; i++) {
-					if (editor->config.show_tabs &&
-						editor->actual_file->file.tab_size > 1 &&
-						i % editor->actual_file->file.tab_size == 0)
-					{
-						u32_print(U'»');
-					}
-
-					else {
-						write(STDOUT_FILENO, &to_print, 1);
-					}
+					u32buf[codepoints++] = to_print; 
 				}
 			}
 
 			else {
+				u32buf[codepoints++] = c;
 				if (!u32_is_printable(c)) {
-					write_color(&INVALID_CHAR);
+					u32_print(u32buf, codepoints);
+					codepoints = 0;
+
+					if (!selected) {
+						write_color(&INVALID_CHAR);
+					}
 					
 					write_hex_byte((uint8_t) c);
-					reset_color();
+
+					apply_style(editor, current_highlight, 0);
 				}
 
 				else {
-					if (editor->config.has_background && hl == HL_NONE) 
-					{
-						write_color(&editor->config.ui.normal);
-					}
 
-					u32_print(c);
 				}
+			}
+
+			if (x == size - 1 || codepoints == size) {
+				u32_print(u32buf, codepoints);
+
+				codepoints = 0;
 			}
 
 			cursor_screen_x += width;
@@ -368,12 +377,19 @@ static void render_utf
 					remaining++;
 				}
 
-				for (size_t i = 0; i < remaining; i++) {
-					write(STDOUT_FILENO, " ", 1);
+				// a ' ' has already been printed
+				if (empty_selected_line && remaining > 0) {
+					remaining--;
 				}
+
+				char buf[remaining];
+				memset(buf, ' ', remaining);
+
+				write(STDOUT_FILENO, buf, remaining);
 			}
 		}
 
+		// codepoints = 0;
 		write(STDOUT_FILENO, "\n", 1);
 	}
 
@@ -396,12 +412,13 @@ static void render_utf
 				gutter = 0;
 			}
 
+			char buf[remaining];
+			memset(buf, ' ', remaining);
+
 			for (size_t y = 0; y < remaining_lines; y++) {
 				move_terminal_cursor(gutter, first_empty_row + y);
 
-				for (size_t x = 0; x < remaining; x++) {
-					write(STDOUT_FILENO, " ", 1);
-				}
+				write(STDOUT_FILENO, buf, remaining);
 			}
 		}
 	}
@@ -445,7 +462,7 @@ void editor_render(Editor* editor) {
 		hide_cursor();
 	}
 
-	write(STDOUT_FILENO, "\x1b]122\x07", strlen("\x1b]122\x07"));
+	// write(STDOUT_FILENO, "\x1b]122\x07", strlen("\x1b]122\x07"));
 
 	render_utf(editor, screen_rows, screen_cols);
 	reset_color();
@@ -462,8 +479,6 @@ void editor_render(Editor* editor) {
 	if (editor->has_window) {
 		window_draw(
 			&editor->window, 
-			editor->tsize.cols, 
-			editor->tsize.rows,
 			&editor->config.ui.window_color);
 	}
 

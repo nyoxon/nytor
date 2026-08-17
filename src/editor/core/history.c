@@ -154,24 +154,25 @@ Operation operation_inverse(const Operation* op) {
 				op->replace.old_text }
 		};
 
-	case OP_LINEMOVE:
-		MoveDirection direction = (op->linemove.direction == LINEMOVE_UP)
-			? LINEMOVE_DOWN
-			: LINEMOVE_UP;
+	case OP_LINEMOVE: {
+			MoveDirection direction = (op->linemove.direction == LINEMOVE_UP)
+				? LINEMOVE_DOWN
+				: LINEMOVE_UP;
 
-		Position start = op->linemove.start;
-		Position end = op->linemove.end;
+			Position start = op->linemove.start;
+			Position end = op->linemove.end;
 
-		return (Operation) {
-			.type = OP_LINEMOVE,
-			.cursor_remove = op->cursor_remove,
-			.cursor_insert = op->cursor_insert,
-			.linemove = {
-				start,
-				end,
-				direction
-			}
-		};
+			return (Operation) {
+				.type = OP_LINEMOVE,
+				.cursor_remove = op->cursor_remove,
+				.cursor_insert = op->cursor_insert,
+				.linemove = {
+					start,
+					end,
+					direction
+				}
+			};
+		}
 
 	default:
 		return *op;
@@ -203,7 +204,7 @@ int operation_can_merge
 (
 	const Operation* a, 
 	const Operation* b,
-	const struct language_rules* rules
+	IsWordChar is_word_char
 ) 
 {
 	if (!a || !b) {
@@ -234,17 +235,7 @@ int operation_can_merge
 			&b->insert.text,
 			0);
 
-		if (belongs_to_language(first, rules) ||
-			belongs_to_language(last, rules))
-		{
-			return 0;
-		}
-
-		if (u32_isspace(first) && !u32_isspace(last)) {
-			return 0;
-		}
-
-		return 1;
+		return is_word_char(first) && is_word_char(last);
 	}
 
 	case OP_DELETE: {
@@ -265,12 +256,6 @@ int operation_can_merge
 		uint32_t first = u32string_char(
 			&a->delete.text,
 			0);
-
-		if (belongs_to_language(first, rules) ||
-			belongs_to_language(last, rules))
-		{
-			return 0;
-		}
 
 		if (u32_isspace(first) && !u32_isspace(last)) {
 			return 0;

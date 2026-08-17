@@ -22,14 +22,7 @@ static void set_background_color(struct config* config, struct color color) {
 		}
 	}
 
-	struct color* bg = &config->ui.spaces_and_tabs.bg;
-
-	if (color_equal(*bg, ANSI_COLOR_DEFAULT))
-	{
-		*bg = color;
-	}
-
-	bg = &config->ui.window_color.border.bg;
+	struct color* bg = &config->ui.window_color.border.bg;
 
 	if (color_equal(*bg, ANSI_COLOR_DEFAULT))
 	{
@@ -106,6 +99,9 @@ void config_default(struct config* config) {
 	config->background_fills_all = 0;
 	config->has_background = 0;
 	config->auto_shell = 0;
+	config->use_autocomplete = 1;
+	config->select_line_selects_next = 1;
+
 
 	config->ui.normal = (struct style) {
 		color_ansi(DEFAULT),
@@ -137,12 +133,6 @@ void config_default(struct config* config) {
 		0
 	};
 
-	config->ui.spaces_and_tabs = (struct style) {
-		color_ansi(DEFAULT),
-		color_ansi(DEFAULT),
-		0
-	};
-
 	config->ui.cursor_style = CURSOR_STYLE_DEFAULT;
 
 	config->ui.window_color.border = (struct style) {
@@ -165,6 +155,7 @@ void config_default(struct config* config) {
 
 	config->theme[HL_NONE] = STYLE_DEFAULT;
 	config->theme[HL_NORMAL] = STYLE_DEFAULT;
+	config->theme[HL_WHITESPACE] = STYLE_DEFAULT;
 	config->theme[HL_KEYWORD] = STYLE_DEFAULT;
 	config->theme[HL_TYPE] = STYLE_DEFAULT;
 	config->theme[HL_LIB_TYPE] = STYLE_DEFAULT;
@@ -200,15 +191,11 @@ void config_default(struct config* config) {
 	};
 
 	config->keybinds[ACTION_SHOW_TABS] = (struct normal_key) {
-		't', KEY_MOD_CTRL
+		't', KEY_MOD_ALT
 	};
 
 	config->keybinds[ACTION_MOVE_START_LINE] = (struct normal_key) {
-		'w', KEY_MOD_CTRL
-	};
-
-	config->keybinds[ACTION_MOVE_INDENT] = (struct normal_key) {
-		'e', KEY_MOD_CTRL
+		'd', KEY_MOD_ALT
 	};
 
 	config->keybinds[ACTION_MOVE_END_LINE] = (struct normal_key) {
@@ -288,11 +275,11 @@ void config_default(struct config* config) {
 	};
 
 	config->keybinds[ACTION_MOVE_WORD_RIGHT] = (struct normal_key) {
-		ARROW_RIGHT, KEY_MOD_ALT
+		ARROW_RIGHT, KEY_MOD_CTRL_SHIFT
 	};
 
 	config->keybinds[ACTION_MOVE_WORD_LEFT] = (struct normal_key) {
-		ARROW_LEFT, KEY_MOD_ALT
+		ARROW_LEFT, KEY_MOD_CTRL_SHIFT
 	};
 
 	config->keybinds[ACTION_MOVE_FULLWORD_RIGHT] = (struct normal_key) {
@@ -324,19 +311,19 @@ void config_default(struct config* config) {
 	};
 
 	config->keybinds[ACTION_NEXT_FILE] = (struct normal_key) {
-		'e', KEY_MOD_ALT
+		ARROW_RIGHT, KEY_MOD_ALT
 	};
 
 	config->keybinds[ACTION_PREV_FILE] = (struct normal_key) {
-		'q', KEY_MOD_ALT
+		ARROW_LEFT, KEY_MOD_ALT
 	};
 
 	config->keybinds[ACTION_NEW_FILE] = (struct normal_key) {
-		'r', KEY_MOD_ALT
+		't', KEY_MOD_CTRL
 	};
 
 	config->keybinds[ACTION_CLOSE_FILE] = (struct normal_key) {
-		'w', KEY_MOD_ALT
+		'w', KEY_MOD_CTRL
 	};
 
 	config->keybinds[ACTION_OPEN_CMD] = (struct normal_key) {
@@ -345,6 +332,14 @@ void config_default(struct config* config) {
 
 	config->keybinds[ACTION_TERMINAL] = (struct normal_key) {
 		'b', KEY_MOD_CTRL
+	};
+
+	config->keybinds[ACTION_QUIT_FORCED] = (struct normal_key) {
+		'q', KEY_MOD_ALT
+	};
+
+	config->keybinds[ACTION_CLOSE_FILE_FORCED] = (struct normal_key) {
+		'w', KEY_MOD_ALT
 	};
 }
 
@@ -710,10 +705,6 @@ static void handle_ui(const char* key, struct style s, struct ui* ui) {
 		ui->status_bar = s;
 	}
 
-	if (strcmp(key, "spaces_and_tabs") == 0) {
-		ui->spaces_and_tabs = s;
-	}
-
 	if (strcmp(key, "window_border") == 0) {
 		ui->window_color.border = s;
 	}
@@ -737,96 +728,112 @@ static void handle_syntax
 {
 	if  (strcmp(key, "normal") == 0) {
 		style[HL_NORMAL] = s;
+		style[HL_NONE] = s;
 	}
 
-	if  (strcmp(key, "comment") == 0) {
+	else if  (strcmp(key, "whitespace") == 0) {
+		style[HL_WHITESPACE] = s;
+	}
+
+	else if  (strcmp(key, "comment") == 0) {
 		style[HL_COMMENT] = s;
 	}
 
-	if  (strcmp(key, "keyword") == 0) {
+	else if  (strcmp(key, "keyword") == 0) {
 		style[HL_KEYWORD] = s;
 	}
 
-	if  (strcmp(key, "preprocessor") == 0) {
+	else if  (strcmp(key, "preprocessor") == 0) {
 		style[HL_PREPROCESSOR] = s;
 	}
 
-	if  (strcmp(key, "type") == 0) {
+	else if  (strcmp(key, "type") == 0) {
 		style[HL_TYPE] = s;
 	}
 
-	if  (strcmp(key, "constant") == 0) {
+	else if  (strcmp(key, "constant") == 0) {
 		style[HL_CONSTANT] = s;
 	}
 
-	if  (strcmp(key, "number") == 0) {
+	else if  (strcmp(key, "number") == 0) {
 		style[HL_NUMBER] = s;
 	}
 
-	if  (strcmp(key, "string") == 0) {
+	else if  (strcmp(key, "string") == 0) {
 		style[HL_STRING] = s;
 	}
 
-	if  (strcmp(key, "char") == 0) {
+	else if  (strcmp(key, "char") == 0) {
 		style[HL_CHAR] = s;
 	}
 
-	if  (strcmp(key, "operator") == 0) {
+	else if  (strcmp(key, "operator") == 0) {
 		style[HL_OPERATOR] = s;
 	}
 
-	if  (strcmp(key, "punctuation") == 0) {
+	else if  (strcmp(key, "punctuation") == 0) {
 		style[HL_PUNCTUATION] = s;
 	}
 
-	if  (strcmp(key, "function") == 0) {
+	else if  (strcmp(key, "function") == 0) {
 		style[HL_FUNCTION] = s;
 	}
 
-	if  (strcmp(key, "lib_function") == 0) {
+	else if  (strcmp(key, "lib_function") == 0) {
 		style[HL_LIB_FUNCTION] = s;
 	}
 
-	if 	(strcmp(key, "lib_type") == 0) {
+	else if 	(strcmp(key, "lib_type") == 0) {
 		style[HL_LIB_TYPE] = s;
 	}
 
-	if (strcmp(key, "posix_type") == 0) {
+	else if (strcmp(key, "posix_type") == 0) {
 		style[HL_POSIX_TYPE] = s;
 	}
 
-	if (strcmp(key, "method_or_attrib") == 0) {
+	else if (strcmp(key, "method_or_attrib") == 0) {
 		style[HL_METHOD_OR_ATTRIB] = s;
 	}
 
-	if 	(strcmp(key, "posix") == 0) {
+	else if 	(strcmp(key, "posix") == 0) {
 		style[HL_POSIX] = s;
 	}
 
-	if  (strcmp(key, "specifier") == 0) {
+	else if  (strcmp(key, "specifier") == 0) {
 		style[HL_SPECIFIER] = s;
 	}
 }
 
-static int load_theme(struct config* config) {
-	if (strcmp(config->theme_path, "") == 0) {
+int config_load_specific_theme(struct config* config, const char* theme) {
+	if (strcmp(theme, "") == 0) {
 		return -1;
 	}
 
 	char path[PATH_MAX_LENGTH];
 
-	if (make_theme_path(path, PATH_MAX_LENGTH, config->theme_path) < 0) {
+	if (make_theme_path(path, PATH_MAX_LENGTH, theme) < 0) {
 		return -2;
 	}
-
-	char line[256];
 
 	FILE* file = fopen(path, "r");
 
 	if (!file) {
-		return -2;
+		sprintf(path, "/usr/local/share/nytor/themes/%s", theme);
+
+		file = fopen(path, "r");
+
+		if (!file) {
+			sprintf(path, "/usr/share/nytor/themes/%s", theme);
+
+			file = fopen(path, "r");
+
+			if (!file) {
+				return -2;
+			}
+		}
 	}
 
+	char line[256];
 	enum section current = SEC_NONE;
 
 	while (fgets(line, sizeof(line), file)) {
@@ -866,9 +873,13 @@ static int load_theme(struct config* config) {
 		set_background_color(config, config->ui.normal.bg);
 	}
 
+	if (strcmp(config->theme_path, theme) != 0) {
+		strcpy(config->theme_path, theme);
+	}
+
 	fclose(file);
 
-	return 0;
+	return 0;	
 }
 
 static void parse_assignment_config
@@ -940,6 +951,16 @@ static void handle_ui_config
 		}
 	}
 
+	if (strcmp(key, "use_autocomplete") == 0) {
+		if (strcmp(value, "true") == 0) {
+			config->use_autocomplete = 1;
+		}
+
+		else if (strcmp(value, "false") == 0) {
+			config->use_autocomplete = 0;
+		}		
+	}
+
 	if (strcmp(key, "tab_size") == 0) {
 		int v = atoi(value);
 
@@ -954,7 +975,7 @@ static void handle_ui_config
 		}
 
 		else if (strcmp(value, "false") == 0) {
-			config->line_numbers = 0;
+			config->use_spaces = 0;
 		}
 	}
 
@@ -995,6 +1016,16 @@ static void handle_ui_config
 
 		else if (strcmp(value, "true") == 0) {
 			config->left_click_end_selection = 1;
+		}
+	}
+
+	if (strcmp(key, "select_line_selects_next") == 0) {
+		if (strcmp(value, "false") == 0) {
+			config->select_line_selects_next = 0;
+		}
+
+		else if (strcmp(value, "true") == 0) {
+			config->select_line_selects_next = 1;
 		}
 	}
 
@@ -1222,6 +1253,10 @@ static void handle_keybinds
 		config->keybinds[ACTION_QUIT] = parse_keybind(value);
 	}
 
+	else if (strcmp(key, "quit_forced") == 0) {
+		config->keybinds[ACTION_QUIT_FORCED] = parse_keybind(value);
+	}
+
 	else if (strcmp(key, "find") == 0) {
 		config->keybinds[ACTION_FIND] = parse_keybind(value);
 	}
@@ -1252,10 +1287,6 @@ static void handle_keybinds
 
 	else if (strcmp(key, "move_end_line") == 0) {
 		config->keybinds[ACTION_MOVE_END_LINE] = parse_keybind(value);
-	}
-
-	else if (strcmp(key, "move_indent") == 0) {
-		config->keybinds[ACTION_MOVE_INDENT] = parse_keybind(value);
 	}
 
 	else if (strcmp(key, "show_tabs") == 0) {
@@ -1370,6 +1401,10 @@ static void handle_keybinds
 		config->keybinds[ACTION_CLOSE_FILE] = parse_keybind(value);
 	}
 
+	else if (strcmp(key, "close_file_forced") == 0) {
+		config->keybinds[ACTION_CLOSE_FILE_FORCED] = parse_keybind(value);
+	}
+
 	else if (strcmp(key, "open_cmd") == 0) {
 		config->keybinds[ACTION_OPEN_CMD] = parse_keybind(value);
 	}
@@ -1395,31 +1430,19 @@ static void handle_plugins
 }
 
 int config_load(struct config* config) {
-	const char* home = getenv("HOME");
+	char path[PATH_MAX_LENGTH];
 
-	if (!home) {
-		return -1;
+	if (make_config_path(path, PATH_MAX_LENGTH) < 0) {
+		return -2;
 	}
 
-	char buf[PATH_MAX_LENGTH];
-
-	int n = sprintf(
-		buf,
-		"%s/.config/nytor/config.ny",
-		home
-	);
-
-	if (n < 0) {
-		return -1;
-	}
-
-	char line[256];
-
-	FILE* file = fopen(buf, "r");
+	FILE* file = fopen(path, "r");
 
 	if (!file) {
 		return -1;
 	}
+
+	char line[256];
 
 	enum section current = SEC_NONE;
 
@@ -1458,7 +1481,7 @@ int config_load(struct config* config) {
 
 	fclose(file);
 
-	if (load_theme(config) < -1) {
+	if (config_load_specific_theme(config, config->theme_path) < -1) {
 		return -2;
 	}
 

@@ -1,0 +1,46 @@
+# --- NAME ---
+
+name = "default"
+
+
+
+# --- UI ----
+
+[ui]
+
+normal = 			{ fg = "#ffffff", bg = "#000001" }
+
+selection = 			{ fg = "#0072c9", bg = "#ff72c9" }
+
+
+line_number = 			{ fg = "#2372c9" }
+line_number_current = 	{ fg = "#23f2c9", bg = "#2372c9" }
+status_bar = 			{ fg = "#ffffff", bg = "#2322c9" }
+window_border =			{ fg = "#2372c9" }
+window_text =			{ fg = "#237212" }
+window_current_line = 	{ fg = "#80f2a9", bg = "#2372c9" }
+
+
+
+# ---- SYNTAX ---
+
+[syntax]
+normal = 		{ fg = "#ffffff" }
+whitespace =	{ fg = "#444444" }
+keyword = 		{ fg = "#2339f9" }
+comment = 		{ fg = "#6a9955", italic }
+preprocessor = 	{ fg = "#a912c9", bold, italic }
+type = 			{ fg = "#a972c9", italic }
+lib_type =		{ fg = "#c9a539" }
+posix_type = 	{ fg = "#c9a5f9" }
+constant = 		{ fg = "#a92539" }
+number = 		{ fg = "#a92539" }
+string = 		{ fg = "#7072f9" }
+char = 			{ fg = "#7072f9" }
+operator = 		{ fg = "#2339f9" }
+punctuation = 	{ fg = "#ff7239" }
+function = 		{ fg = "#ff00c9" }
+method_or_attrib = { fg = "#2372c9" }
+lib_function =  { fg = "#237259" }
+posix = 		{ fg = "#23c259" }
+specifier = 	{ fg = "#a972f9" }

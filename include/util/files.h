@@ -22,6 +22,12 @@ int make_plugin_language_path
 	const char* path
 );
 
+int make_config_path
+(
+	char* out,
+	size_t size
+);
+
 void get_filename_after_last_slash(char* out, const char* filename);
 
 int file_exists(const char* filename);

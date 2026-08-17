@@ -1,5 +1,6 @@
 #include <unistd.h>
 #include <stdio.h>
+#include <assert.h>
 
 #include "terminal/parser.h"
 
@@ -224,6 +225,8 @@ static struct event parse_modifier_sequence() {
 	return event;
 }
 
+
+// FIXME (later)
 static struct event parse_special_key() {
 	return KEY_NONE;
 }
@@ -319,13 +322,14 @@ static struct event parse_escape_sequence() {
 		// parse_ss3();
 		break;
 
-	default:
-		struct event e = {0};
+	default: {
+			struct event e = {0};
 
-		e.type = EVENT_KEY;
-		e.key.content = c;
-		e.key.modifiers = KEY_MOD_ALT;
-		return e;
+			e.type = EVENT_KEY;
+			e.key.content = c;
+			e.key.modifiers = KEY_MOD_ALT;
+			return e;
+		}
 	}
 
 	if (read(STDIN_FILENO, &c, 1) != 1) {

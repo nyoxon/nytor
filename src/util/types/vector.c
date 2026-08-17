@@ -61,7 +61,7 @@ void vector_realloc(Vector* v, size_t new_capacity) {
 
 // this should consider v->clone (deep copy), but that feature is not used 
 // in the program
-Vector vector_slice(Vector* v, size_t begin, size_t end) {
+Vector vector_slice(const Vector* v, size_t begin, size_t end) {
 	vector_assert_bounds(v, begin);
 	assert(end <= v->size && "end invalid");
 

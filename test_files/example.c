@@ -1,18 +1,18 @@
 #include <stdio.h>
-
-/*
+asd😅
 comentariow em blocow
 asd
+asdasds
 asd
-asd
-*/
-
+porra
 asd.tudo;
 asd->tudo;
+/*
 
-asd"asds
+*/
+asdasds
 int main(void) {
 	printf();
-	word	
+	word
 	return 0;
-}"
+}

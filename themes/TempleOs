@@ -1,0 +1,36 @@
+name = "TempleOs"
+
+[ui]
+
+normal = 				{ fg = "black", bg = "bright_white"}
+
+selection = 			{ fg = "black", bg = "blue" }
+line_number =			{ fg = "blue" }
+line_number_current = 	{ fg = "white",	bg = "blue"}
+status_bar =			{ fg = "white",	bg = "blue"}
+
+window_border =			{ fg = "blue", bg = "white" }
+window_text =			{ fg = "blue", bg = "white"}
+window_current_line =	{ fg = "red", bg = "bright_black" }
+
+[syntax]
+
+normal = 		{ fg = "black" }
+whitespace = 	{ fg = "bright_black"}
+keyword = 		{ fg = "blue" }
+comment = 		{ fg = "bright_black" }
+preprocessor = 	{ fg = "blue" }
+type = 			{ fg = "bright_blue" }
+lib_type =		{ fg = "bright_blue" }
+posix_type = 	{ fg = "bright_blue" }
+constant = 		{ fg = "red" }
+number = 		{ fg = "black" }
+string = 		{ fg = "yellow" }
+char = 			{ fg = "yellow" }
+operator = 		{ fg = "black" }
+punctuation = 	{ fg = "black" }
+function = 		{ fg = "magenta", bold }
+method_or_attrib = { fg = "black" }
+lib_function =  { fg = "magenta", bold }
+posix = 		{ fg = "magenta", bold }
+specifier = 	{ fg = "blue" }

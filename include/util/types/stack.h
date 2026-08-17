@@ -18,6 +18,8 @@ typedef struct {
 	Destructor destroy;
 } Stack;
 
+void* stack_at(Stack* s, size_t i);
+
 void stack_init
 (
 	Stack* s,

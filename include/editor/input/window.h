@@ -3,6 +3,10 @@
 
 #include "editor/editor.h"
 
-void editor_handle_window_input(Editor* editor, struct event event);
+int editor_handle_window_input
+(
+	Editor* editor, 
+	struct event event
+);
 
 #endif

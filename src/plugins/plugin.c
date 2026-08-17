@@ -3,11 +3,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <ctype.h>
 
 #include "plugins/plugin.h"
 #include "util/files.h"
 #include "terminal/input.h"
 #include "terminal/parser.h"
+#include "util/types/u32string.h"
 
 struct plugin_result plugin_language_load(const char* name) {
 	struct plugin_result result = {
@@ -25,7 +27,9 @@ struct plugin_result plugin_language_load(const char* name) {
 
 	if (!plugin) {
 		result.error = 1;
-	} else {
+	} 
+
+	else {
 		result.handle = plugin;
 	}
 
@@ -127,7 +131,13 @@ int load_lang_plugins(Vector* out, Vector* plugin_names) {
 			continue;
 		}
 
-		plugin_init_t init = dlsym(handle, "plugin_init");
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wpedantic"
+
+		// gcc will complain about void* conversion
+		plugin_init_t init = (plugin_init_t) dlsym(handle, "plugin_init");
+
+		#pragma GCC diagnostic pop
 
 		if (!init) {
 			plugin_destroy(handle);
@@ -162,4 +172,8 @@ int load_lang_plugins(Vector* out, Vector* plugin_names) {
 
 void destroy_lang_plugins(Vector* lang_plugins) {
 	vector_free(lang_plugins);
+}
+
+int is_utf_word_char(uint32_t c) {
+	return (u32_is_printable(c) && !isspace((unsigned char) c));
 }

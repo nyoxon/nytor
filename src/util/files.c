@@ -58,6 +58,65 @@ int has_extension(const char* path, const char* ext) {
 	return 0;
 }
 
+int make_config_path
+(
+	char* out,
+	size_t size
+)
+{
+	if (!out) {
+		return -1;
+	}
+
+	const char* home = getenv("HOME");
+
+	if (!home) {
+		return -1;
+	}
+
+	int n = snprintf(
+		out,
+		size,
+		"%s/.config/nytor/config.ny",
+		home
+	);
+
+	if (n < 0 || (size_t) n >= size) {
+		return -1;
+	}
+
+	int fd = open(out, O_RDONLY);
+
+	if (fd < 0) {
+		n = sprintf(out, "/usr/local/share/nytor/config.ny");
+
+		if (n < 0 || (size_t) n >= size) {
+			return -1;
+		}
+
+		fd = open(out, O_RDONLY);
+
+		if (fd < 0) {
+			n = sprintf(out, "/usr/share/nytor/config.ny");
+
+			if (n < 0 || (size_t) n >= size) {
+				return -1;
+			}
+
+			fd = open(out, O_RDONLY);
+
+			if (fd < 0) {
+				return -1;
+			}	
+		}
+	}
+
+	close(fd);
+
+	return 0;
+}
+
+
 int make_theme_path
 (
 	char* out, 
@@ -86,6 +145,34 @@ int make_theme_path
 	if (n < 0 || (size_t) n >= size) {
 		return -1;
 	}
+
+	int fd = open(out, O_RDONLY);
+
+	if (fd < 0) {
+		n = sprintf(out, "/usr/local/share/nytor/themes/%s", path);
+
+		if (n < 0 || (size_t) n >= size) {
+			return -1;
+		}
+
+		fd = open(out, O_RDONLY);
+
+		if (fd < 0) {
+			n = sprintf(out, "/usr/share/nytor/themes/%s", path);
+
+			if (n < 0 || (size_t) n >= size) {
+				return -1;
+			}
+
+			fd = open(out, O_RDONLY);
+
+			if (fd < 0) {
+				return -1;
+			}	
+		}
+	}
+
+	close(fd);
 
 	return 0;
 }
@@ -118,6 +205,36 @@ int make_plugin_language_path
 	if (n < 0 || (size_t) n >= size) {
 		return -1;
 	}
+
+	int fd = open(out, O_RDONLY);
+
+	if (fd < 0) {
+		n = sprintf(out, 
+			"/usr/local/share/nytor/plugins/languages/%s.so", path);
+
+		if (n < 0 || (size_t) n >= size) {
+			return -1;
+		}
+
+		fd = open(out, O_RDONLY);
+
+		if (fd < 0) {
+			n = sprintf(out,
+				"/usr/share/nytor/plugins/languages/%s.so", path);
+
+			if (n < 0 || (size_t) n >= size) {
+				return -1;
+			}
+
+			fd = open(out, O_RDONLY);
+
+			if (fd < 0) {
+				return -1;
+			}	
+		}
+	}
+
+	close(fd);
 
 	return 0;
 }

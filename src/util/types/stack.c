@@ -22,7 +22,7 @@ void stack_init
 	s->destroy = destroy;
 }
 
-static void* stack_at(Stack* s, size_t i) {
+void* stack_at(Stack* s, size_t i) {
 	size_t index = (s->start + i) % s->capacity;
 
 	return (char*) s->data + index * s->elem_size;

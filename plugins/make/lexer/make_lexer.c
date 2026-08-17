@@ -7,6 +7,12 @@
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
+int is_make_word_char(uint32_t c) {
+	unsigned char k = (unsigned char) c;
+
+	return (isalnum(k) || k == '_');
+}
+
 struct keyword {
 	const char* name;
 	uint8_t len;
@@ -265,6 +271,7 @@ static size_t make_tokenize_line
 )
 {
 	(void) lexer;
+	(void) state_in;
 
 	size_t ntokens = 0;
 	size_t i = 0;
@@ -454,9 +461,7 @@ static size_t make_tokenize_line
 
 			size_t begin = i;
 
-			while (i < len &&
-				((unsigned char) isalnum(line[i]) ||
-				line[i] == '_'))
+			while (i < len && is_make_word_char(line[i]))
 			{
 				i++;
 			}
@@ -563,7 +568,8 @@ static const struct language_rules make_rules = {
 	.pairs = MAKE_PAIRS,
 	.pair_count = ARRAY_SIZE(MAKE_PAIRS),
 	.comment_fmt = comment_fmt,
-	.auto_indent = 1
+	.auto_indent = 1,
+	.is_word_char = is_make_word_char
 };
 
 static const struct language_plugin make_plugin = {

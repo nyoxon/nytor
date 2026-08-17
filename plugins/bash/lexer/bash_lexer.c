@@ -8,6 +8,12 @@
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
+int is_bash_word_char(uint32_t c) {
+	unsigned char k = (unsigned char) c;
+
+	return (isalnum(k) || k == '_');
+}
+
 struct keyword {
 	const char* name;
 	uint8_t len;
@@ -707,9 +713,7 @@ static void handle_multiline_lexer_state
 			}
 
 			else {
-				while (*i < len && 
-					((unsigned char) isalnum(line[*i]) ||
-						line[*i] == '_'))
+				while (*i < len && is_bash_word_char(line[*i]))
 				{
 					(*i)++;
 				}
@@ -922,9 +926,7 @@ static size_t bash_tokenize_line
 			size_t begin = i;
 			int is_param = (begin > 0 && line[begin - 1] == '-');
 
-			while (i < len &&
-				((unsigned char) isalnum(line[i]) ||
-				line[i] == '_'))
+			while (i < len && is_bash_word_char(line[i]))
 			{
 				i++;
 			}
@@ -1030,9 +1032,7 @@ static size_t bash_tokenize_line
 				}
 
 				else {
-					while (i < len && 
-						((unsigned char) isalnum(line[i]) ||
-							line[i] == '_'))
+					while (i < len && is_bash_word_char(line[i]))
 					{
 						i++;
 					}
@@ -1131,7 +1131,8 @@ static const struct language_rules bash_rules = {
 	.pairs = BASH_PAIRS,
 	.pair_count = ARRAY_SIZE(BASH_PAIRS),
 	.comment_fmt = comment_fmt,
-	.auto_indent = 1
+	.auto_indent = 1,
+	.is_word_char = is_bash_word_char
 };
 
 static const struct language_plugin bash_plugin = {

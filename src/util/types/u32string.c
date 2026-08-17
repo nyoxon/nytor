@@ -54,7 +54,7 @@ u32string u32string_from_raw_copy(const uint32_t* text, size_t size) {
 }
 
 
-u32string u32string_slice(u32string* string, size_t begin, size_t end) {
+u32string u32string_slice(const u32string* string, size_t begin, size_t end) {
 	Vector slice = vector_slice(&string->text, begin, end);
 
 	u32string out;
@@ -111,6 +111,13 @@ uint32_t u32string_char(const u32string* string, size_t index) {
 void u32string_free(u32string* string) {
 	vector_free(&string->text);
 }
+
+void u32string_vector_destroy(void* ptr) {
+	u32string* string = ptr;
+
+	u32string_free(string);
+}
+
 
 void u32string_push(u32string* string, uint32_t c) {
 	vector_push(&string->text, &c);
@@ -366,13 +373,13 @@ void u32string_prepend_raw
 	u32string_reserve(string, string->text.size + size);
 
 	memmove(
-		string->text.data + size * sizeof(uint32_t),
-		string->text.data,
+		(uint32_t*) string->text.data + size,
+		(uint32_t*) string->text.data,
 		string->text.size * sizeof(uint32_t)
 	);
 
 	memcpy(
-		string->text.data,
+		(uint32_t*) string->text.data,
 		text,
 		size * sizeof(uint32_t)
 	);
@@ -403,13 +410,13 @@ void u32string_insert_range_raw
 	u32string_reserve(string, string->text.size + count);
 
 	memmove(
-		string->text.data + (index + count) * sizeof(uint32_t),
-		string->text.data + index * sizeof(uint32_t),
+		(uint32_t*) string->text.data + (index + count),
+		(uint32_t*) string->text.data + index,
 		(string->text.size - index) * sizeof(uint32_t)
 	);
 
 	memcpy(
-		string->text.data + index * sizeof(uint32_t),
+		(uint32_t*) string->text.data + index,
 		text,
 		count * sizeof(uint32_t)
 	);
@@ -774,6 +781,38 @@ int u32_decode(const char* text, size_t size, uint32_t* cp) {
 	return -1;	
 }
 
+size_t utf8_to_u32
+(
+	const char* text, 
+	uint32_t* out, 
+	size_t out_size
+) 
+{
+	if (!text || !out) {
+		return 0;
+	}
+
+	size_t size = strlen(text);
+
+	if (out_size > size) {
+		out_size = size;
+	}
+
+	size_t in = 0;
+
+	while (in < out_size) {
+		int n = u32_decode(text + in, size - in, &out[in]);
+
+		if (n < 0) {
+			return in;
+		}
+
+		in += n;
+	}
+
+	return in;
+}
+
 char* u32string_into_u8(const u32string* string) {
 	if (!string) {
 		return NULL;
@@ -841,19 +880,26 @@ size_t u32string_print_range(const u32string* string, size_t start, size_t n) {
 		n = size;
 	}
 
-	char utf8[4];
 	int len;
 
-	size_t printed = 0;
+	char* buf = malloc(4 * n * sizeof(*buf));
 
-	for (size_t i = start; i < start + n; i++) {
-		len = u32_encode(u32string_char(string, i), utf8);
-		write(STDOUT_FILENO, utf8, len);
-
-		printed++;
+	if (!buf) {
+		return 0;
 	}
 
-	return printed;
+	size_t bytes = 0;
+
+	for (size_t i = start; i < start + n; i++) {
+		len = u32_encode(u32string_char(string, i), buf + bytes);
+
+		bytes += (size_t) len;
+	}
+
+	write(STDOUT_FILENO, buf, bytes);
+
+	free(buf);
+	return n;
 }
 
 size_t u32string_print(const u32string* string) {
@@ -864,12 +910,32 @@ size_t u32string_printn(const u32string* string, size_t n) {
 	return u32string_print_range(string, 0, n);
 }
 
-void u32_print(uint32_t cp) {
+void u32_print_cp(uint32_t cp) {
     char utf8[4];
     int len = u32_encode(cp, utf8);
 
     write(STDOUT_FILENO, utf8, len);
 }
+
+void u32_print(const uint32_t* string, size_t size) {
+	if (size == 0) {
+		return;
+	}
+
+	char buf[4 * size];
+
+	size_t bytes = 0;
+	int len;
+
+	for (size_t i = 0; i < size; i++) {
+		len = u32_encode(string[i], buf + bytes);
+
+		bytes += (size_t) len;
+	}
+
+	write(STDOUT_FILENO, buf, bytes);
+}
+
 
 int u32_is_printable(uint32_t cp) {
 	if (cp > 0x10FFFF) {

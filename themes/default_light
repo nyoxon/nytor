@@ -1,0 +1,13 @@
+name = "default_light"
+
+[ui]
+
+normal =				{ fg = "#333333", bg = "#aaaaaa" }
+selection = 			{ fg = "#000000", bg = "#565612" }
+line_number =			{ fg = "#000000"}
+line_number_current =	{ fg = "#00aa00", bg = "#891250" }
+status_bar =			{ fg = "#333333", bg = "#565612" }
+spaces_and_tabs =		{ fg = "#dddddd" }
+window_border =			{ fg = "#891250" }
+window_text =			{ fg = "#333333" }
+window_current_line = 	{ fg = "#353535", bg = "#2372c9" }

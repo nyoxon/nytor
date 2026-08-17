@@ -4,30 +4,12 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <assert.h>
+#include <ctype.h>
 
-#include "editor/core/cmd.h"
-#include "editor/core/auto_complete.h"
+#include "editor/core/cmd.h" 
+#include "editor/core/auto_complete.h" 
+#include "editor/core/action.h"
 #include "util/files.h"
-
-static const AutoCompDummy dummy = {
-	._ = '_'
-};
-
-static const AutoCompResult ResultSuccess = {
-	.type = AUTOCOMP_RESULT_SUCCESS,
-	.dummy = dummy
-};
-
-static const AutoCompResult ResultNoCandidates = {
-	.type = AUTOCOMP_RESULT_NO_CANDIDATES,
-	.dummy = dummy
-};
-
-static void vector_u32string_destroy(void* ptr) {
-	u32string* string = (u32string*) ptr;
-
-	u32string_free(string);
-}
 
 static int u32string_cmp(const void* a, const void* b) {
 	const u32string* sa = a;
@@ -171,7 +153,7 @@ static Vector get_autocomp_candidates
 ) 
 {
 	Vector candidates;
-	vector_init(&candidates, sizeof(u32string), vector_u32string_destroy);
+	vector_init(&candidates, sizeof(u32string), u32string_vector_destroy);
 
 	switch (type) {
 	case AUTOCOMP_CMD:
@@ -195,157 +177,531 @@ static Vector get_autocomp_candidates
 	return candidates;
 }
 
-static AutoCompResult autocomp
+/// --- AUTOCOMP_PROMPT ---
+
+static void autocomp_prompt
 (
-	const u32string* string,
-	const Vector* candidates,
-	Prompt* pt,
-	size_t start,
+	Editor* editor,
+	const uint32_t* suffix,
+	size_t suffix_size,
+	size_t prefix_size,
 	AutoCompType type
 )
 {
-	const u32string* perfect_candidate =
-		(const u32string*) vector_get_const(candidates, 0);
+	u32string* text = &editor->status_bar.buf;
 
-	size_t len;
-
-	{
-		const u32string* last = vector_get_const(
-			candidates,
-			candidates->size - 1);
-
-		len = u32string_common_prefix(perfect_candidate, last);
-	}
-
-	if (candidates->size > 1) {
-		int can_autocomplete = 1;
-
-		if (u32string_equal(string, perfect_candidate)) {
-			can_autocomplete = 0;
-		}
-
-		if (u32string_size(string) >= len) {
-			can_autocomplete = 0;
-		}
-
-		if (can_autocomplete) {
-			goto autocomplete;
-		}
-
-		return (AutoCompResult) {
-			.type = AUTOCOMP_RESULT_SHOW_CANDIDATES,
-			.candidates = *candidates
-		};
-	}
-
-
-autocomplete:
-	size_t buf_size = u32string_size(&pt->buf);
-
-	/// FIXME
-	assert(len >= (buf_size - start));
-
-	pt->cursor.pos.x += len - (buf_size - start);
-
-	u32string_remove_range(
-		&pt->buf,
-		start,
-		buf_size
-	);
+	size_t x = (editor->status_bar.cursor.pos.x == 0)
+		? 1
+		: editor->status_bar.cursor.pos.x;
 
 	u32string_insert_range_raw(
-		&pt->buf,
-		start,
-		u32string_into_ptr_const(perfect_candidate),
-		len
+		text,
+		x,
+		suffix,
+		suffix_size
 	);
 
-	if (candidates->size == 1) {
-		uint32_t additional_char;
+	uint32_t additional_char[] = {U' '};
 
-		if (type == AUTOCOMP_FILE) {
-			char* name = u32string_into_u8(perfect_candidate);
+	if (type == AUTOCOMP_FILE) {
+		char* name = u32_to_utf8(
+			u32string_into_ptr_const(text) + x - prefix_size,
+			prefix_size + suffix_size
+		);
 
-			if (isdir(name)) {
-				additional_char = U'/';
-			}
-
-			else {
-				additional_char = U' ';
-			}
-
-			free(name);
+		if (isdir(name)) {
+			additional_char[0] = U'/';
 		}
 
-		else {
-			additional_char = U' ';
-		}
-
-		u32string_push(&pt->buf, additional_char);
-		pt->cursor.pos.x++;
+		free(name);
 	}
 
-	return ResultSuccess;
+	x += suffix_size;
+
+	u32string_insert_range_raw(
+		text,
+		x,
+		additional_char,
+		1
+	);
+
+	x++;
+
+	editor->status_bar.cursor.pos.x = x;
+	prompt_cursor_update(&editor->status_bar);
 }
 
-AutoCompResult autocomp_cmd
-(
-	const u32string* string,
-	Prompt* pt
-) 
-{
-	Vector candidates = get_autocomp_candidates(
-		AUTOCOMP_CMD,
-		string);
+static WindowResult on_select_autocomp_prompt(void* userdata) {
+	assert(userdata != NULL);
+
+	Editor* editor = userdata;
+	Vector* candidates = &editor->window.content;
+	u32string* buf = &editor->status_bar.buf;
+
+	size_t x = editor->status_bar.cursor.pos.x;
+
+	if (x == u32string_size(buf)) {
+		x--;
+	}
+
+	if (x > 0) {
+		x--;
+	}
+
+	while (is_utf_word_char(u32string_char(buf, x))) {
+		if (x == 0) {
+			break;
+		}
+
+		x--;
+	}
+
+	if (x > 0) {
+		x++;
+	}
+
+	const u32string* selected = vector_get_const(
+		candidates,
+		editor->window.cursor.pos.y
+	);
+
+	size_t prefix_size = editor->status_bar.cursor.pos.x - x;
+	size_t suffix_size = u32string_size(selected) - prefix_size;
+
+	AutoCompType type = (u32string_size(buf) == prefix_size)
+		? AUTOCOMP_CMD
+		: AUTOCOMP_FILE;
+
+	autocomp_prompt(
+		editor,
+		u32string_into_ptr_const(selected) + prefix_size,
+		suffix_size,
+		prefix_size,
+		type
+	);
+
+	return WINDOW_CLOSE;
+}
+
+int editor_autocomp_prompt(Editor* editor) {
+	size_t x = editor->status_bar.cursor.pos.x;
+
+	if (x == 0) {
+		return -1;
+	}
+
+	const u32string* buf = &editor->status_bar.buf;
+
+	if (x == u32string_size(buf)) {
+		x--;
+	}
+
+	if (!is_utf_word_char(u32string_char(buf, x))) {
+		return -1;
+	}
+
+	while (is_utf_word_char(u32string_char(buf, x))) {
+		if (x == 0) {
+			break;
+		}
+
+		x--;
+	}
+
+	if (x > 0) {
+		x++;
+	}
+
+	const uint32_t* prefix = u32string_into_ptr_const(buf) + x;
+	size_t prefix_size = editor->status_bar.cursor.pos.x - x;
+
+	int search_cmd = (u32string_size(buf) == prefix_size);
+
+	Vector candidates;
+
+	u32string u32prefix = u32string_from_raw_copy(
+		prefix,
+		prefix_size
+	);
+
+	AutoCompType type;
+
+	if (search_cmd) {
+		type = AUTOCOMP_CMD;
+		candidates = get_autocomp_candidates(type, &u32prefix);
+	}
+
+	else {
+		type = AUTOCOMP_FILE;
+
+		candidates = get_autocomp_candidates(type, &u32prefix);
+	}
+
+	u32string_free(&u32prefix);
 
 	if (candidates.size == 0) {
 		vector_free(&candidates);
-
-		return ResultNoCandidates;
+		return -1;
 	}
 
-	AutoCompResult result =  autocomp(
-		string, 
-		&candidates, 
-		pt, 
-		0, 
-		AUTOCOMP_CMD);
+	else if (candidates.size == 1) {
+		const u32string* word = vector_get_const(
+			&candidates,
+			0
+		);
 
-	if (result.type == AUTOCOMP_RESULT_SUCCESS) {
+		uint32_t suffix_size = u32string_size(word) - prefix_size;
+
+		autocomp_prompt(
+			editor,
+			u32string_into_ptr_const(word) + prefix_size,
+			suffix_size,
+			prefix_size,
+			type
+		);
+
 		vector_free(&candidates);
+
+		return 0;		
 	}
 
-	return result;
+	float sw = 0.2;
+	float sh = 0.5;
+
+	Position pos = {
+		u32string_size(&editor->status_bar.label) +
+			editor->status_bar.cursor.pos.x,
+
+		editor->tsize.rows * ( 1 - sh) - 2
+	};
+
+	WindowOptions options = {
+		.pos_type = WINDOWPOS_CUSTOM,
+		.pos = pos,
+		.sw = sw,
+		.sh = sh,
+		.tab_size = editor->actual_file->file.tab_size,
+		.tsize = editor->tsize,
+		.on_select = on_select_autocomp_prompt
+	};
+
+	editor->window = window_new(&options);
+	editor->has_window = 1;
+
+	editor->window.content = candidates;
+
+	return 0;	
 }
 
-AutoCompResult autocomp_file
+
+/// --- AUTOCOMP_WORD ---
+
+typedef struct {
+	u32string string;
+	size_t frequency;
+} WordFreq;
+
+static void collect_word
 (
-	const u32string* string,
-	Prompt* pt,
-	size_t start
+	const uint32_t* word,
+	size_t word_size,
+	TrieNode* node,
+	void* userdata
 )
 {
-	Vector candidates = get_autocomp_candidates(
-		AUTOCOMP_FILE,
-		string
+	(void) node;
+
+	Vector* candidates = userdata;
+
+	u32string u32word = u32string_from_raw_copy(
+		word,
+		word_size
 	);
 
-	if (candidates.size == 0) {
-		vector_free(&candidates);
+	WordFreq w = {
+		.string = u32word,
+		.frequency = node->frequency
+	};
 
-		return ResultNoCandidates;
+	vector_push(candidates, &w);
+}
+
+static int word_cmp(const void* a, const void* b) {
+	const WordFreq* wa = a;
+	const WordFreq* wb = b;
+
+	int ret = (int) wb->frequency - (int) wa->frequency;
+
+	return ret;
+}
+
+static void autocomp_word
+(
+	Editor* editor,
+	u32string* text,
+	const uint32_t* suffix,
+	size_t suffix_size,
+	size_t prefix_size
+)
+{
+	// necessarily greater than 0, otherwise
+	// this function would not have been called	
+	size_t x = editor->cursor.pos.x;
+
+	Position cursor_remove = (Position) { x, editor->cursor.pos.y };
+
+	u32string_insert_range_raw(
+		text,
+		x,
+		suffix,
+		suffix_size
+	);
+
+	x += suffix_size;
+
+	size_t word_size = prefix_size + suffix_size;
+
+	if (editor->config.use_autocomplete) {
+		editor_update_word_frequency(
+			editor,
+			u32string_into_ptr_const(text) + x - word_size,
+			word_size,
+			1
+		);
 	}
 
-	AutoCompResult result = autocomp(
-		string, 
-		&candidates, 
-		pt, 
-		start, 
-		AUTOCOMP_FILE);
+	u32string_insert_range_raw(
+		text,
+		x,
+		U" ",
+		1
+	);
 
-	if (result.type == AUTOCOMP_RESULT_SUCCESS) {
-		vector_free(&candidates);
+	x++;
+	Position cursor_insert = (Position) { x, editor->cursor.pos.y };
+
+	editor->cursor.pos.x = x;
+	editor_cursor_update(editor);
+
+	Position start = cursor_remove;
+	Position end = cursor_insert;
+
+	u32string op_text = u32string_slice(
+		text,
+		start.x,
+		end.x
+	);
+
+	Operation op = operation_create_insert(
+		start, end,
+		cursor_remove, cursor_insert,
+		op_text
+	);
+
+	stack_clear(&editor->actual_file->redo);
+	stack_push(&editor->actual_file->undo, &op);
+
+	file_set_line_dirty(&editor->actual_file->file, editor->cursor.pos.y);
+	file_set_has_dirty_line(&editor->actual_file->file);
+	editor->actual_file->file.dirty = 1;
+}
+
+static WindowResult on_select_autocomp(void* userdata) {
+	assert(userdata != NULL);
+
+	Editor* editor = userdata;
+	Vector* candidates = &editor->window.content;
+
+	u32string* text = file_get_line_text(
+		&editor->actual_file->file,
+		editor->cursor.pos.y
+	);
+
+	size_t cursor_x = editor->cursor.pos.x;
+
+	// necessarily greater than 0, otherwise
+	// this function would not have been called
+	size_t size = u32string_size(text);
+
+	size_t x = cursor_x;
+
+	if (x == size) {
+		x--;
+	}
+	
+	IsWordChar is_word = editor_get_IsWordChar(editor);
+
+	// necessarily in a valid position, otherwise
+	// this function would not have been called
+	while (x > 0 && is_word(u32string_char(text, x - 1))) {
+		x--;
 	}
 
-	return result;
+	const u32string* selected = vector_get_const(
+		candidates,
+		editor->window.cursor.pos.y
+	);
+
+	size_t prefix_size = editor->cursor.pos.x - x;
+	size_t suffix_size = u32string_size(selected) - prefix_size;
+
+	autocomp_word(
+		editor,
+		text,
+		u32string_into_ptr_const(selected) + prefix_size,
+		suffix_size,
+		prefix_size
+	);
+
+	return WINDOW_CLOSE;
+}
+
+int editor_autocomp_word(Editor* editor) {
+	if (!editor->actual_file->words.root ||
+		editor->cursor.pos.x == 0) 
+	{
+		return -1;
+	}
+
+	const u32string* text = file_get_line_text(
+		&editor->actual_file->file,
+		editor->cursor.pos.y
+	);
+
+	size_t cursor_x = editor->cursor.pos.x;
+	size_t size = u32string_size(text);
+
+	if (size == 0) {
+		return -1;
+	}
+
+	size_t x = cursor_x;
+
+	// asd|
+	if (x == size) {
+		x--;
+	}
+	
+	IsWordChar is_word = editor_get_IsWordChar(editor);
+
+	// if the cursor is not over a word_char, is it
+	// immediately after a word_char?
+	if (!is_word(u32string_char(text, x))) {
+
+		// no
+		if (x == 0 || !is_word(u32string_char(text, x - 1))) {
+			return -1;
+		}
+
+		// yes
+		x--;
+	}
+
+	while (x > 0 && is_word(u32string_char(text, x - 1))) {
+		x--;
+	}
+
+	size_t word_start = x;
+	size_t word_end = cursor_x;
+
+	// now: asd a
+	// -----x----
+
+
+	// "asd"
+	// -p--
+	const uint32_t* prefix = u32string_into_ptr_const(text) + word_start;
+	size_t prefix_size = word_end - word_start;
+
+	Vector words;
+	vector_init(&words, sizeof(WordFreq), NULL);
+
+	trie_prefix_search(
+		&editor->actual_file->words,
+		prefix,
+		prefix_size,
+		collect_word,
+		&words
+	);
+
+	if (words.size == 0) {
+		vector_free(&words);
+
+		return -1;
+	}
+
+	else if (words.size == 1) {
+		u32string* text_mut = (u32string*) text;
+		text = NULL;
+
+		WordFreq* wf = vector_get(
+			&words,
+			0
+		);
+
+		u32string word = wf->string;
+
+		uint32_t suffix_size = u32string_size(&word) - prefix_size;
+
+		autocomp_word(
+			editor,
+			text_mut,
+			u32string_into_ptr_const(&word) + prefix_size,
+			suffix_size,
+			prefix_size
+		);
+
+		u32string_free(&wf->string);
+		vector_free(&words);
+
+		return 0;
+	}
+
+	qsort(
+		words.data,
+		words.size,
+		words.elem_size,
+		word_cmp
+	);
+
+	float sw = 0.2;
+	float sh = 0.6;
+
+	size_t height = editor->tsize.rows * sh;
+
+	size_t pos_x = editor->cursor.pos.x;
+	size_t pos_y = (editor->cursor.pos.y > editor->tsize.rows / 2)
+		? (editor->cursor.pos.y == 0)
+			? 0
+			// 2 = 1 (window_border) + 1 (editor->cursor.pos.y)
+			: (editor->cursor.pos.y > height + 2)
+				? editor->cursor.pos.y - height - 2
+				: editor->cursor.pos.y - 1
+		: editor->cursor.pos.y + 1;
+
+	WindowOptions options = {
+		.pos_type = WINDOWPOS_CUSTOM,
+		.pos = (Position) { pos_x, pos_y },
+		.sw = sw,
+		.sh = sh,
+		.tab_size = editor->actual_file->file.tab_size,
+		.tsize = editor->tsize,
+		.on_select = on_select_autocomp
+	};
+
+	editor->window = window_new(&options);
+	editor->has_window = 1;
+
+	for (size_t i = 0; i < words.size; i++) {
+		WordFreq* wf = vector_get(
+			&words,
+			i
+		);
+
+		vector_push(&editor->window.content, &wf->string);
+	}
+
+	vector_free(&words);
+
+	return 0;	
 }

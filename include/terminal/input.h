@@ -45,9 +45,12 @@ struct event {
 	};
 };
 
+
+/// --- ACTION ---
 enum action {
 	ACTION_SAVE,
 	ACTION_QUIT,
+	ACTION_QUIT_FORCED,
 	ACTION_FIND,
 	ACTION_MATCH,
 	ACTION_GOTO,
@@ -55,7 +58,6 @@ enum action {
 	ACTION_UNINDENT,
 	ACTION_COMMENT,
 	ACTION_MOVE_START_LINE,
-	ACTION_MOVE_INDENT,
 	ACTION_MOVE_END_LINE,
 	ACTION_SHOW_TABS,
 	ACTION_SELECTION,
@@ -85,11 +87,21 @@ enum action {
 	ACTION_PREV_FILE,
 	ACTION_NEW_FILE,
 	ACTION_CLOSE_FILE,
+	ACTION_CLOSE_FILE_FORCED,
 	ACTION_OPEN_CMD,
 	ACTION_TERMINAL,
 
 	ACTION_COUNT
 };
+
+int normal_key_equal
+(
+	const struct normal_key* a,
+	const struct normal_key* b
+);
+
+
+/// TERMINAL FUNCTIONS
 
 void hide_cursor();
 void show_cursor();
@@ -99,12 +111,6 @@ void clean_terminal();
 
 char* str_action(int index);
 char* str_modifier(uint32_t modifiers);
-
-int normal_key_equal
-(
-	const struct normal_key* a,
-	const struct normal_key* b
-);
 
 void activate_terminal();
 void deactivate_terminal();

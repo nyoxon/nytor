@@ -1,0 +1,105 @@
+# a color is composed of:
+# fg (the color of the text),
+# bg (the background color of the text),
+# and modifiers (italic, bold, underline etc)
+# the format is:
+
+# color = { fg = "RGB/ANSI", bg = "RGB/ANSI", modifier1, modifier2, ... }
+
+
+# for a fg/bg color you can use either an RGB color
+# or an ANSI color.
+
+# for RGB colors, you can use two formats:
+# 	(r, g, b), where 0 <= r, g, b <= 255 or
+# 	#xxxxxx, a hexadecimal value (the '#' is necessary)
+# both in quotation marks
+
+# for ANSI colors (16), you have the options:
+#	black,
+#	red,
+#	green,
+#	yellow,
+#	blue,
+#	magenta,
+#	cyan,
+#	white,
+#	bright_black,
+#	bright_red,
+#	bright_green,
+#	bright_yellow,
+#	bright_blue,
+#	bright_magenta,
+#	bright_cyan,
+#	bright_white,
+#	default (terminal color)
+# you also need to put the color between quotation marks
+
+# for modifiers, you have the options:
+# 	bold
+#	italic
+#	underline
+#	reverse
+#	dim		(the terminal emulator may ignore)
+# you don't need to put the modifier between quotation marks
+
+# example of a valid color:
+# normal = { fg = "red", bg = "#ffffff", italic, bold }
+
+
+# --- NAME ---
+
+name = "default"
+
+
+
+# --- UI ----
+
+[ui]
+
+# if you use a language plugin, the fg component
+# of the normal color could end up becoming useless,
+# in the case, be sure to set the same color to
+# syntax.normal.fg
+
+normal = 			{ fg = "#ffffff", bg = "default" }
+
+
+# why wouldn't you set a bg component for selection 🤔?
+# anyway, if you don't do it, the program won't do it
+# for you
+
+selection = 			{ fg = "#0072c9", bg = "#ff72c9" }
+
+
+line_number = 			{ fg = "#2372c9" }
+line_number_current = 	{ fg = "#23f2c9", bg = "#2372c9" }
+status_bar = 			{ fg = "#ffffff", bg = "#2322c9" }
+window_border =			{ fg = "#2372c9" }
+window_text =			{ fg = "#237212" }
+window_current_line = 	{ fg = "#80f2a9", bg = "#2372c9" }
+
+
+
+# ---- SYNTAX ---
+
+[syntax]
+normal = 		{ fg = "#ffffff" }
+whitespace =	{ fg = "#444444" }
+keyword = 		{ fg = "#2339f9" }
+comment = 		{ fg = "#6a9955", italic }
+preprocessor = 	{ fg = "#a912c9", bold, italic }
+type = 			{ fg = "#a972c9", italic }
+lib_type =		{ fg = "#c9a539" }
+posix_type = 	{ fg = "#c9a5f9" }
+constant = 		{ fg = "#a92539" }
+number = 		{ fg = "#a92539" }
+string = 		{ fg = "#7072f9" }
+char = 			{ fg = "#7072f9" }
+operator = 		{ fg = "#2339f9" }
+punctuation = 	{ fg = "#ff7239" }
+function = 		{ fg = "#ff00c9" }
+method_or_attrib = { fg = "#2372c9" }
+lib_function =  { fg = "#237259" }
+posix = 		{ fg = "#23c259" }
+specifier = 	{ fg = "#a972f9" }

@@ -42,7 +42,7 @@ void vector_insert_range
 
 // this should consider v->clone, but that feature is not used 
 // in the program
-Vector vector_slice(Vector* v, size_t begin, size_t end);
+Vector vector_slice(const Vector* v, size_t begin, size_t end);
 
 int vector_swap(Vector* v, size_t i, size_t j);
 

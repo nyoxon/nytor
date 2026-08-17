@@ -29,6 +29,11 @@ void editor_open_terminal(Editor* editor) {
 		struct passwd* pw = getpwuid(getuid());
 
 		if (pw == NULL) {
+			if (editor->debug_mode) {
+				log_write(&editor->log, "editor_open_terminal: %s",
+					strerror(errno));
+			}
+
 			return;
 		}
 
@@ -129,7 +134,7 @@ void editor_open_terminal(Editor* editor) {
 			}
 
 			else if (WIFSIGNALED(status)) {
-				sprintf(buf, "exit: %d", WTERMSIG(status));
+				sprintf(buf, "signal: %d", WTERMSIG(status));
 
 				prompt_init(
 					&editor->status_bar,
@@ -143,6 +148,10 @@ void editor_open_terminal(Editor* editor) {
 	}
 
 	close(master);
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, "editor_open_terminal: SUCCESS");
+	}
 
 	mouse_on();	
 }
@@ -165,9 +174,17 @@ void editor_update_size(Editor* editor) {
 	}
 
 	prompt_update_size(&editor->status_bar, editor->tsize);
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, "editor_update_size: SUCCESS");
+	}
 }
 
 void editor_suspend(Editor* editor) {
+	if (editor->debug_mode) {
+		log_write(&editor->log, "editor_suspend: starting");
+	}
+
 	clean_terminal();
 	disable_raw_mode();
 	mouse_off();
@@ -187,6 +204,10 @@ void editor_suspend(Editor* editor) {
 	editor_update_size(editor);
 
 	editor->suspend = 0;
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, "editor_suspend: SUCCESS");		
+	}
 }
 
 
@@ -235,8 +256,11 @@ void editor_cursor_update(Editor* editor)
 		}
 	}
 
-
 	editor_sync_cursor(editor);
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, "editor_cursor_update: SUCCESS");		
+	}
 }
 
 void editor_cursor_move(Editor* editor, Position pos)
@@ -256,6 +280,11 @@ void editor_cursor_move(Editor* editor, Position pos)
 
 	editor->cursor.pos = pos;
 	editor_cursor_update(editor);
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, 
+			"editor_cursor_move: moved to (%zu, %zu)", pos.x, pos.y);		
+	}
 }
 
 
@@ -267,7 +296,11 @@ static void editor_clean
 	editor_selection_clear(editor);
 
 	result_free(&editor->result);
-	editor->result.reason = NULL;	
+	editor->result.reason = NULL;
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, "editor_clean: SUCCESS");		
+	}	
 }
 
 
@@ -283,30 +316,59 @@ void editor_change_actual_file
 	size_t files = editor->files.size;
 
 	if (index >= files || index == editor->actual_file_index) {
+		if (editor->debug_mode) {
+			log_write(&editor->log, 
+				"editor_change_actual_file: SUCCESS");		
+		}
+
 		return;
 	}
 
 	EditorFile* ef = vector_get(&editor->files, index);
 
 	if (!ef) {
+		if (editor->debug_mode) {
+			log_write(&editor->log, 
+				"editor_change_actual_file: ef is NULL");		
+		}
+
 		return;
+	}
+
+	if (ef->type == EDITOR_FILE_PROTOTYPE) {
+		int ret = editor_file_open(
+			ef,
+			&editor->lang_plugins_data,
+			&editor->result
+		);
+
+		if (ret < 0) {
+			return;
+		}
 	}
 
 	/// --- SAVING USEFUL DATA AND RESETING OTHERS ---
 
 	editor_clean(editor);
 	editor->actual_file->cursor = editor->cursor;
+	editor->actual_file->view = editor->view;
 
 	/// --- CHANGING ---
 
 	editor->actual_file = ef; editor->actual_file_index = index;
 
 	editor->cursor = editor->actual_file->cursor;
-	editor_cursor_update(editor);
+	editor->view = editor->actual_file->view;
+	// editor_cursor_update(editor);
 
 	editor_prompt_init(editor);
 
 	editor_create_syntax(editor);
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, 
+			"editor_change_actual_file: changed to %zu", index);		
+	}
 }
 
 void editor_change_next_file
@@ -355,27 +417,33 @@ void editor_change_prev_file
 
 void editor_create_new_file
 (
-	Editor* editor
+	Editor* editor,
+	int readonly
 )
 {
-	EditorFile new_file;
-
 	EditorFileOptions options = {
 		.filename = NULL,
-		.readonly = 0,
+		.readonly = readonly,
 		.default_tab_size = editor->config.tab_size,
 		.default_use_spaces = editor->config.use_spaces,
 		.inotify_fd = -1
 	};
 
+	EditorFile new_file = editor_file_prototype(&options);
+
 	int ret = editor_file_open(
 		&new_file,
-		&options,
 		NULL,
 		&editor->result
 	);
 
 	if (ret < 0) {
+		if (editor->debug_mode) {
+			log_write(&editor->log, 
+				"editor_create_new_file: %s",
+				editor->result.reason);		
+		}
+
 		return;
 	}
 
@@ -405,6 +473,10 @@ void editor_create_new_file
 
 		editor_change_actual_file(editor, index + 1);
 	}
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, "editor_create_new_file: SUCCESS");		
+	}
 }
 
 int editor_create_internal_file
@@ -414,7 +486,7 @@ int editor_create_internal_file
 	Clipboard* content
 )
 {
-	editor_create_new_file(editor);
+	editor_create_new_file(editor, 1);
 
 	int ret = file_paste_clipboard(
 		&editor->actual_file->file,
@@ -424,12 +496,19 @@ int editor_create_internal_file
 	);
 
 	if (ret < 0) {
+		if (editor->debug_mode) {
+			log_write(&editor->log, 
+				"editor_create_internal_file: %s", 
+				editor->result.reason);		
+		}
+
 		return ret;
 	}
 
 	editor_cursor_move(editor, POS_ZERO);
 	
 	editor->actual_file->file.dirty = 0;
+	// editor->actual_file->file.has_dirty_line = 0;
 	editor->actual_file->file.filename = (name != NULL)
 		? strdup(name)
 		: NULL;
@@ -437,10 +516,12 @@ int editor_create_internal_file
 	editor->actual_file->new_file = 0;
 	editor->actual_file->internal = 1;
 
-	editor->actual_file->readonly = 1;
-
 	if (name) {
 		editor_prompt_init(editor);
+	}
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, "editor_cursor_update: SUCCESS");		
 	}
 
 	return EIE_OK;		
@@ -453,8 +534,6 @@ void editor_open_file
 	int readonly
 )
 {
-	EditorFile ef;
-
 	EditorFileOptions options = {
 		.filename = filename,
 		.readonly = readonly,
@@ -463,17 +542,23 @@ void editor_open_file
 		.inotify_fd = editor->inotify_fd
 	};
 
+	EditorFile ef = editor_file_prototype(&options);
+
 	int ret = editor_file_open(
 		&ef,
-		&options,
 		&editor->lang_plugins_data,
 		&editor->result
 	);
 
 	if (ret < 0) {
+		if (editor->debug_mode) {
+			log_write(&editor->log, "editor_open_file: %s",
+				editor->result.reason);		
+		}
+
 		prompt_init(
 			&editor->status_bar,
-			strerror(errno),
+			editor->result.reason,
 			PT_INFO);
 
 		return;
@@ -488,96 +573,189 @@ void editor_open_file
 	editor_change_actual_file(editor, editor->actual_file_index + 1);
 }
 
-
-static void editor_file_quit(Editor* editor) {
-	reset_color();
-
-	if (editor->actual_file->file.dirty) {
-		clean_terminal();
-		char msg[] = "save before close?\n(y/n)";       
-		write(STDOUT_FILENO, msg, strlen(msg));
-
-		while (1) { // blocks the main thread
-
-			struct event event = parser_read_key();
-
-			if (event.type != EVENT_KEY) {
-				continue;
-			}
-
-			struct normal_key key = event.key;
-
-			if (key.content == U'y' || key.content == U'Y') {
-				editor_save_file(editor);
-
-				break;
-			}
-
-			if (key.content == U'n' || key.content == U'N') {
-				break;
-			}
-		}
-	}
-}
-
-void editor_close_file
-(
-	Editor* editor
-)
-{
-	if (editor->files.size == 1 &&
-		!editor->actual_file->file.filename &&
-		file_num_lines(&editor->actual_file->file) == 1 &&
-		file_size_line(&editor->actual_file->file, 0) == 0)
-	{
+void editor_close_file_forced(Editor* editor, size_t index) {
+	if (index >= editor->files.size) {
 		return;
 	}
 
-	// this flag is intended to make the file-closing operation
-	// a bit more convenient for the user
-	int untitled_with_something =
-		!editor->actual_file->file.filename &&
-		!(file_num_lines(&editor->actual_file->file) == 1 &&
-		 file_size_line(&editor->actual_file->file, 0) == 0);
+	EditorFile* ef = vector_get(
+		&editor->files,
+		index
+	);
 
-	if (untitled_with_something || editor->actual_file->file.filename) {
-		editor_file_quit(editor);
+	if (ef->type == EDITOR_FILE_PROTOTYPE) {
+		// it's obvious that, in this case,
+		// ef does not refer to the actual file
+
+		vector_remove_and_destroy(&editor->files, index);
+
+		if (editor->debug_mode) {
+			log_write(&editor->log, 
+				"editor_close_file_forced: (prototype) SUCCESS");		
+		}
+
+		return;
 	}
 
-	size_t index = editor->actual_file_index;
-	vector_remove_and_destroy(&editor->files, index);
+	int untitled_empty =
+		(!ef->file.filename &&
+		file_num_lines(&ef->file) == 1 &&
+		file_size_line(&ef->file, 0) == 0);
+
+	if (untitled_empty && editor->files.size == 1)
+	{
+		if (editor->debug_mode) {
+			log_write(&editor->log, 
+				"editor_close_file_forced: untitled file with nothing");		
+		}
+
+		return;
+	}
 
 	// editor->actual_file->watch_descriptor is not a file descriptor,
 	// so not calling del_watcher does not result in a fd leak.
 	// however, i thought it would be a good practice to call it
 	// anyway
 	editor_file_del_watcher(
-		editor->actual_file,
+		ef,
 		editor->inotify_fd
 	);
 
-	// switches from the current file to the previous one
-	if (editor->files.size > 0) {
-		editor_clean(editor);
+	vector_remove_and_destroy(&editor->files, index);
 
-		editor->actual_file_index = (index == 0)
-			? editor->files.size - 1
-			: index - 1;
+	if (index == editor->actual_file_index) {
+		ef = NULL;
 
-		editor->actual_file = vector_get(&editor->files,
-			editor->actual_file_index);
+		// switches from the current file to the previous one
+		if (editor->files.size > 0) {
+			editor_clean(editor);
 
-		editor->cursor = editor->actual_file->cursor;
-		editor_cursor_update(editor);
+			editor->actual_file_index = (index == 0)
+				? editor->files.size - 1
+				: index - 1;
 
-		editor_prompt_init(editor);
+			editor->actual_file = vector_get(&editor->files,
+				editor->actual_file_index);
 
-		editor_create_syntax(editor);
+			editor->cursor = editor->actual_file->cursor;
+			editor_cursor_update(editor);
+
+			editor_prompt_init(editor);
+
+			editor_create_syntax(editor);
+		}
+
+		// creates a new, internal and untitled file
+		else {
+			editor_create_new_file(editor, 0);
+		}
 	}
 
-	// creates a new, internal and untitled file
-	else {
-		editor_create_new_file(editor);
+	if (editor->debug_mode) {
+		log_write(&editor->log, 
+			"editor_close_file_forced: (loaded) SUCCESS");		
+	}	
+}
+
+
+void editor_close_file
+(
+	Editor* editor,
+	size_t index
+)
+{
+	if (index >= editor->files.size) {
+		return;
+	}
+
+	EditorFile* ef = vector_get(
+		&editor->files,
+		index
+	);
+
+	if (ef->type == EDITOR_FILE_PROTOTYPE) {
+		// it's obvious that, in this case,
+		// ef does not refer to the actual file
+
+		vector_remove_and_destroy(&editor->files, index);
+
+		if (editor->debug_mode) {
+			log_write(&editor->log, 
+				"editor_close_file: (prototype) SUCCESS");		
+		}
+
+		return;
+	}
+
+	int untitled_empty =
+		(!ef->file.filename &&
+		file_num_lines(&ef->file) == 1 &&
+		file_size_line(&ef->file, 0) == 0);
+
+	if (untitled_empty && editor->files.size == 1) {
+		if (editor->debug_mode) {
+			log_write(&editor->log, 
+				"editor_close_file: untitled file with nothing");		
+		}
+
+		return;
+	}
+
+	if (!untitled_empty && ef->file.dirty) {
+		prompt_init(
+			&editor->status_bar,
+			PROMPT_FILE_UNSAVED_CHANGES,
+			PT_INFO
+		);
+
+		editor->status_bar.invert_color = 1;
+
+		return;
+	}
+
+
+	// editor->actual_file->watch_descriptor is not a file descriptor,
+	// so not calling del_watcher does not result in a fd leak.
+	// however, i thought it would be a good practice to call it
+	// anyway
+	editor_file_del_watcher(
+		ef,
+		editor->inotify_fd
+	);
+
+	vector_remove_and_destroy(&editor->files, index);
+
+	if (index == editor->actual_file_index) {
+		ef = NULL;
+
+		// switches from the current file to the previous one
+		if (editor->files.size > 0) {
+			editor_clean(editor);
+
+			editor->actual_file_index = (index == 0)
+				? editor->files.size - 1
+				: index - 1;
+
+			editor->actual_file = vector_get(&editor->files,
+				editor->actual_file_index);
+
+			editor->cursor = editor->actual_file->cursor;
+			editor_cursor_update(editor);
+
+			editor_prompt_init(editor);
+
+			editor_create_syntax(editor);
+		}
+
+		// creates a new, internal and untitled file
+		else {
+			editor_create_new_file(editor, 0);
+		}
+	}
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, 
+			"editor_close_file: (loaded) SUCCESS");		
 	}
 }
 
@@ -586,522 +764,82 @@ void editor_close_file
 /// --- EDITOR CHANGE HANDLERS ---
 
 void editor_handle_deleted(Editor* editor) {
-	clean_terminal();
-	hide_cursor();
+	editor->actual_file->externally_deleted = 0;
 
-	printf("%s\n\n", editor->actual_file->file.filename);
+	prompt_init(
+		&editor->status_bar,
+		PROMPT_FILE_DELETED,
+		PT_INFO
+	);
 
-	char msg[] = "file has been deleted externally\n"
-				 "what do you wanna do?\n\n";
-	write(STDOUT_FILENO, msg, sizeof(msg));
-
-	char other_msg[] = "- continue and create a new file later (1)\n"
-					   "- close file (2)\n";
-	write(STDOUT_FILENO, other_msg, sizeof(other_msg));
-
-	while (1) {
-		struct event event = parser_read_key();
-
-		if (event.type != EVENT_KEY) {
-			continue;
-		}
-
-		struct normal_key key = event.key;
-
-		if (key.content == U'1') {
-			editor->actual_file->externally_deleted = 0;
-			editor->actual_file->file.dirty = 1;
-			editor->actual_file->new_file = 1;
-			editor->actual_file->internal = 1;
-
-			editor_file_set_watcher(
-				editor->actual_file,
-				editor->actual_file->file.filename,
-				editor->inotify_fd
-			);
-
-			show_cursor();
-			return;
-		}
-
-		else if (key.content == U'2') {
-			editor->actual_file->file.dirty = 0;
-			editor_close_file(editor);
-			show_cursor();
-			return;
-		}
-	}
+	editor->actual_file->file.dirty = 1;
+	editor->status_bar.invert_color = 1;
+	editor->actual_file->new_file = 1;
 }
 
 void editor_handle_moved_from(Editor* editor) {
-	clean_terminal();
-	hide_cursor();
+	editor->actual_file->externally_moved_from = 0;
 
-	printf("%s\n\n", editor->actual_file->file.filename);
-
-	char msg[] = "actual file has been moved externally\n"
-				 "what do you wanna do?\n\n";
-	write(STDOUT_FILENO, msg, sizeof(msg));
-
-	char other_msg[] = "- continue and create a new file later (1)\n"
-					   "- close file (2)\n";
-	write(STDOUT_FILENO, other_msg, sizeof(other_msg));
-
-	while (1) {
-		struct event event = parser_read_key();
-
-		if (event.type != EVENT_KEY) {
-			continue;
-		}
-
-		struct normal_key key = event.key;
-
-		if (key.content == U'1') {
-			editor->actual_file->externally_moved_from = 0;
-			editor->actual_file->file.dirty = 1;
-			editor->actual_file->new_file = 1;
-			editor->actual_file->internal = 1;
-
-			editor_file_set_watcher(
-				editor->actual_file,
-				editor->actual_file->file.filename,
-				editor->inotify_fd
-			);
-
-			show_cursor();
-			return;
-		}
-
-		else if (key.content == U'2') {
-			editor->actual_file->file.dirty = 0;
-			editor_close_file(editor);
-			show_cursor();
-			return;
-		}		
-	}	
-}
-
-
-// helper for editor_handle_modified and editor_handle_attrib_changed
-static int change_filename(Editor* editor, struct normal_key key) {
-	if ((key.content == U'\n' || key.content == U'\r')) {
-		char* new_filename = u32string_into_u8(
-			&editor->status_bar.buf); 
-
-		if (file_exists(new_filename)) {
-			char msg[1024];
-			sprintf(msg, 
-			"%s already exists. try again\n", new_filename);
-
-			prompt_init(&editor->status_bar,
-				msg,
-				PT_INFO);
-
-			free(new_filename);
-			return -1;
-		}
-
-		int new_fd = open(new_filename,
-			O_RDWR | O_CREAT, 0644);
-
-		if (new_fd < 0) {
-			free(new_filename);
-			return -2;
-		}
-
-		editor->actual_file->externally_deleted = 0;
-		editor->actual_file->externally_moved_from = 0;
-		editor->actual_file->externally_modified = 0;
-
-		inotify_rm_watch(
-			editor->inotify_fd,
-			editor->actual_file->watch_descriptor);
-
-		editor->actual_file->file.dirty = 1;
-		editor->actual_file->file.filename = new_filename;
-
-		file_save(
-			&editor->actual_file->file,
-			&editor->result
-		);
-
-		editor_file_update_metadata(
-			editor->actual_file);
-
-		char* absolute = absolute_parent_directory(
-			new_filename
-		);
-
-		editor->actual_file->watch_descriptor = 
-			inotify_add_watch(
-			editor->inotify_fd,
-			absolute,
-			IN_CREATE |
-			IN_MOVED_TO |
-			IN_MOVED_FROM |
-			IN_CLOSE_WRITE |
-			IN_DELETE |
-			IN_ATTRIB				
-		);
-
-		free(absolute);
-
-		close(new_fd);
-
-		editor_prompt_init(editor);
-
-		return 0;
-	}
-
-	else if (u32_is_printable(key.content) && key.modifiers == 0) {
-		u32string_push(&editor->status_bar.buf, key.content);
-	} 
-
-	else if (key.content == 127) {
-		if (!u32string_is_empty(&editor->status_bar.buf)) {
-			u32string_remove(
-				&editor->status_bar.buf,
-				u32string_size(&editor->status_bar.buf) - 1,
-				NULL);
-		}
-	}
-
-	prompt_drawn(
+	prompt_init(
 		&editor->status_bar,
-		&editor->config.ui.status_bar,
-		&editor->tsize);
+		PROMPT_FILE_MOVED_FROM,
+		PT_INFO
+	);
 
-	return 1;
+	editor->actual_file->file.dirty = 1;
+	editor->status_bar.invert_color = 1;
+	editor->actual_file->new_file = 1;
 }
+
 
 void editor_handle_modified(Editor* editor) {
-	clean_terminal();
-	hide_cursor();
+	editor->actual_file->externally_modified = 0;
 
-	char msg[] = "actual file has been modified externally\n"
-				 "what do you wanna do?\n\n";
-	write(STDOUT_FILENO, msg, sizeof(msg));
+	prompt_init(
+		&editor->status_bar,
+		PROMPT_FILE_MODIFIED,
+		PT_INFO
+	);
 
-	char other_msg[] = "- sync file (1)\n- close file (2)\n"
-					   "- create a new file (3)\n";
-	write(STDOUT_FILENO, other_msg, sizeof(other_msg));
-
-	int create = 0;
-
-	while (1) {
-		struct event event = parser_read_key();
-
-		if (event.type != EVENT_KEY) {
-			continue;
-		}
-
-		struct normal_key key = event.key;
-
-		if (create) {
-			int ret = change_filename(editor, key);
-
-			if (ret == 0) {
-				show_cursor();
-				return;
-			}
-
-			else if (ret == 1) {
-				continue;
-			}
-
-			else if (ret == 2) {
-				prompt_init(
-					&editor->status_bar,
-					strerror(errno),
-					PT_INFO);
-
-				show_cursor();
-
-				return;
-			}
-		}
-
-		if (key.content == U'1') {
-			editor_file_sync(editor->actual_file);
-			show_cursor();
-			return;
-		}
-
-		else if (key.content == U'2') {
-			editor->actual_file->file.dirty = 0;
-			editor_close_file(editor);
-			show_cursor();
-			return;
-		}
-
-		else if (key.content == U'3') {
-			create = 1;
-			continue;
-		}
-	}		
+	editor->actual_file->file.dirty = 1;
+	editor->status_bar.invert_color = 1;
 }
 
 
 void editor_handle_attrib_changed(Editor* editor) {
 	editor->actual_file->externally_attrib_changed = 0;
 
-	char* filename = editor->actual_file->file.filename;
-	int fd = open(filename, O_RDWR);
+	prompt_init(
+		&editor->status_bar,
+		PROMPT_FILE_ATTRIB_CHANGED,
+		PT_INFO
+	);
 
-	if (fd < 0) {
-		fd = open(filename, O_RDONLY);
-
-		if (fd < 0) {
-			close(fd);
-			clean_terminal();
-			hide_cursor();
-
-			char msg[] = 
-			"file's permissions have changed and you cannot read it anymore.\n"
-			"what do you wanna do?\n\n";
-
-			write(STDOUT_FILENO, msg, sizeof(msg));
-
-			char other_msg[] = "- create a new file (1)\n"
-							   "- close file (2)\n";
-
-			write(STDOUT_FILENO, other_msg, sizeof(other_msg));
-
-			int change = 0;
-
-			while (1) {
-				struct event event = parser_read_key();
-
-				if (event.type != EVENT_KEY) {
-					continue;
-				}
-
-				struct normal_key key = event.key;
-
-				if (change) {
-					int ret = change_filename(editor, key);
-
-					if (ret == 1) {
-						continue;
-					}
-
-					if (ret == 0) {
-						return;
-					}
-
-					else {
-						prompt_init(
-							&editor->status_bar,
-							strerror(errno),
-							PT_INFO
-						);
-
-						return;
-					}
-				}
-
-				if (key.content == U'1') {
-					show_cursor();
-
-					prompt_init(
-						&editor->status_bar,
-						"filename: ",
-						PT_INTERACTIVE);
-
-					char msg[] = "\ninsert a new filename at the prompt "
-								 "below\n";
-
-					write(STDOUT_FILENO, msg, sizeof(msg));
-
-					prompt_drawn(
-						&editor->status_bar,
-						&editor->config.ui.status_bar,
-						&editor->tsize);
-
-					free(filename);
-					change = 1;
-
-					filename = NULL;
-
-					editor->actual_file->file.filename = NULL;
-
-					continue;
-				}
-
-				else if (key.content == U'2') {
-					editor->actual_file->file.dirty = 0;
-					editor_close_file(editor);
-					show_cursor();
-					return;
-				}
-			}
-		}
-
-		if (!editor->actual_file->readonly && 
-			editor->actual_file->file.dirty) 
-		{
-			clean_terminal();
-			hide_cursor();
-
-			char msg[] = 
-			"file's permissions have changed and you cannot modify it anymore.\n\n"
-			"this message is appearing because you were modifying the \n"
-			"file and the changes made haven't been saved, so\n"
-			"what do you wanna do?\n\n";
-
-			write(STDOUT_FILENO, msg, sizeof(msg));
-
-			char other_msg[] = "- create a new file (1)\n"
-							   "- close file (2)\n"
-							   "- reopen file as readonly (3)\n";
-
-			write(STDOUT_FILENO, other_msg, sizeof(other_msg));
-
-			int change = 0;
-
-			while (1) {
-				struct event event = parser_read_key();
-
-				if (event.type != EVENT_KEY) {
-					continue;
-				}
-
-				struct normal_key key = event.key;
-
-				if (change) {
-					int ret = change_filename(editor, key);
-
-					if (ret == 0) {
-						return;
-					}
-
-					else if (ret == 1) {
-						continue;
-					}
-
-					else {
-						prompt_init(
-							&editor->status_bar,
-							strerror(errno),
-							PT_INFO);
-
-						return;
-					}
-				}
-
-				if (key.content == U'1') {
-					show_cursor();
-
-					free(filename);
-					filename = NULL;
-
-					editor->actual_file->file.filename = NULL;
-
-					change = 1;
-					continue;
-				}
-
-				else if (key.content == U'2') {
-					editor->actual_file->file.dirty = 0;
-					editor_close_file(editor);
-					show_cursor();
-					return;
-				}
-
-				else if (key.content == U'3') {
-					show_cursor();
-					editor->actual_file->file.dirty = 0;
-
-					filename = strdup(editor->actual_file->file.filename);
-					editor_close_file(editor);
-					editor_open_file(editor, filename, 1);
-
-					free(filename);
-					return;
-				}
-			}
-		}
-
-		else {
-			editor->actual_file->readonly = 1;
-		}
-	}
+	editor->actual_file->file.dirty = 1;
+	editor->status_bar.invert_color = 1;
 }
 
 
 
 /// --- SAVE ---
+int editor_save_file(Editor* editor, size_t index) {
+	// index < files.size or crash
 
-// helper for editor_save_file
-static int editor_handle_create_file(Editor* editor, struct normal_key key) {
-	if ((key.content == U'\n' || key.content == U'\r')) {
-		char* filename = u32string_into_u8(
-			&editor->status_bar.buf); 
+	EditorFile* ef = vector_get(
+		&editor->files,
+		index
+	);
 
-		if (file_exists(filename)) {
-			char msg[1024];
-			sprintf(msg, "%s already exists. try again\n", filename);
-
-			prompt_init(&editor->status_bar,
-				msg,
-				PT_INFO);
-
-			free(filename);
-			return 0;
-		}
-
-		int fd = open(filename, // TODO
-			O_RDWR | O_CREAT, 0644);
-
-		if (fd < 0) {
-			free(filename);
-			return 2;
-		}
-
-		editor_file_set_lang_plugin(
-			editor->actual_file,
-			filename,
-			&editor->lang_plugins_data);
-
-		if (editor->actual_file->file.filename) {
-			free(editor->actual_file->file.filename);
-		}
-
-		editor->actual_file->file.filename = filename;
-
-		editor_prompt_init(editor);
-
-		close(fd);
-
-		return 0;
+	if (ef->type == EDITOR_FILE_PROTOTYPE) {
+		return EIE_OK;
 	}
 
-	else if (key.content == editor->config.keybinds[ACTION_QUIT].content &&
-		key.modifiers == editor->config.keybinds[ACTION_QUIT].modifiers) 
-	{
-		editor->status_bar.active = 0;
-
-		return -1;
-	} 
-
-	else if (u32_is_printable(key.content) && key.modifiers == 0) {
-		u32string_push(&editor->status_bar.buf, key.content);
-	} 
-
-	else if (key.content == 127) {
-		if (!u32string_is_empty(&editor->status_bar.buf)) {
-			u32string_remove(
-				&editor->status_bar.buf,
-				u32string_size(&editor->status_bar.buf) - 1,
-				NULL);
+	if (ef->readonly) {
+		if (editor->debug_mode) {
+			log_write(&editor->log, 
+				"editor_cursor_update: tried to save a readonly file");		
 		}
-	}
 
-	return 1;	
-}
-
-int editor_save_file(Editor* editor) {
-	if (editor->actual_file->readonly) {
 		prompt_init(
 			&editor->status_bar,
 			PROMPT_READONLY,
@@ -1110,97 +848,32 @@ int editor_save_file(Editor* editor) {
 		return EIE_NOT_FATAL_ERROR;
 	}
 
-	if (!editor->actual_file->file.filename &&
-		editor->actual_file->new_file) 
-	{
-		clean_terminal();
-		hide_cursor();
+	if (!ef->file.filename) {
+		prompt_init(
+			&editor->status_bar,
+			PROMPT_FILE_UNTITLED,
+			PT_INFO
+		);
 
-		char msg[] = "file does not exit\n" 
-					 "create file?\n(y/n)";
+		editor->status_bar.invert_color = 1;
 
-		write(STDOUT_FILENO, msg, sizeof(msg));
-
-		int create = 0;
-
-		while (1) {
-			struct event event = parser_read_key();
-
-			if (event.type != EVENT_KEY) {
-				continue;
-			}
-
-			struct normal_key key = event.key;
-
-			if (create) {
-				int ret = editor_handle_create_file(editor, key);
-
-				prompt_drawn(
-					&editor->status_bar, 
-					&editor->config.ui.status_bar,
-					&editor->tsize);
-
-				if (ret == 0) {
-					editor->actual_file->internal = 0;
-					editor->actual_file->new_file = 0;
-					goto save;
-				}
-
-				else if (ret == 1) {
-					continue;
-				}
-
-				else if (ret == 2) {
-					prompt_init(
-						&editor->status_bar,
-						strerror(errno),
-						PT_INFO);
-
-					show_cursor();
-
-					return EIE_NOT_FATAL_ERROR;
-				}
-
-				else {
-					show_cursor();
-					return EIE_NOT_AN_ERROR;
-				}
-			}
-
-			if (key.content == U'y' || key.content == U'Y') {
-				char msg[] = 
-					"\n\nenter the filename at the prompt below\n";
-				write(STDOUT_FILENO, msg, sizeof(msg));
-
-				prompt_init(
-					&editor->status_bar, 
-					"filename: ", 
-					PT_INTERACTIVE);
-
-				create = 1;
-
-				prompt_drawn(
-					&editor->status_bar, 
-					&editor->config.ui.status_bar,
-					&editor->tsize);
-
-				continue;
-			}
-
-			if (key.content == U'n' || key.content == U'N') {
-				show_cursor();
-				return EIE_NOT_AN_ERROR;
-			}
-		}
-
-		return 0;
+		return EIE_NOT_FATAL_ERROR;
 	}
 
-save:
 	show_cursor();
-	int ret = file_save(&editor->actual_file->file, &editor->result);
+	int ret = file_save(&ef->file, &editor->result);
 
 	if (ret < 0) {
+		char buf[256];
+
+		sprintf(buf, "errno: %s", strerror(errno));
+
+		prompt_init(
+			&editor->status_bar,
+			buf,
+			PT_INFO
+		);		
+
 		return ret;
 	}
 
@@ -1208,23 +881,33 @@ save:
 	// 	prompt_init(&editor->status_bar, "saved", PT_INFO);
 	// }
 
-	if (editor->actual_file->watch_descriptor < 0) {
+	if (ef->watch_descriptor < 0) {
 		editor_file_set_watcher(
-			editor->actual_file,
-			editor->actual_file->file.filename,
+			ef,
+			ef->file.filename,
 			editor->inotify_fd
 		);
 	}
 
-	if (editor->actual_file->new_file) {
-		editor->actual_file->new_file = 0;
+	if (ef->new_file) {
+		if (editor->config.use_autocomplete) 
+		{
+			editor_file_sync(
+				ef,
+				editor->config.use_autocomplete,
+				&editor->result
+			);				
+		}
+
+		ef->new_file = 0;
 	}
 
-	if (editor->actual_file->internal) {
-		editor->actual_file->internal = 0;
+	if (ef->internal) {
+		ef->internal = 0;
 	}
 
-	editor_file_update_metadata(editor->actual_file);
+
+	editor_file_update_metadata(ef);
 
 	if (editor->debug_mode) {
 		log_write(&editor->log, "editor_save_file: SUCCESS");
@@ -1237,12 +920,48 @@ save:
 
 /// --- QUIT ---
 
-static int show_and_handle_dirty_files(Editor* editor) {
-	size_t first_dirty;
+static void save_valid_files(Editor* editor) {
+	for (size_t i = 0; i < editor->files.size; i++) {
+		EditorFile* ef = vector_get(&editor->files, i);
+
+		if (ef->type == EDITOR_FILE_PROTOTYPE) {
+			continue;
+		}
+
+		if (ef->file.dirty && ef->file.filename) {
+			file_save(&ef->file, &editor->result);
+		}			
+	}	
+}
+
+WindowResult on_select_handle_dirty_program(void* userdata) {
+	assert(userdata != NULL);
+
+	Editor* editor = userdata;
+
+	if (editor->window.cursor.pos.y == 0) {
+		return WINDOW_QUIT_PROGRAM;
+	}
+
+	else if (editor->window.cursor.pos.y == 1) {
+		save_valid_files(editor);
+		return WINDOW_QUIT_PROGRAM;
+	}
+
+	else {
+		return WINDOW_CLOSE;
+	}
+}
+
+static int handle_dirty_files(Editor* editor) {
 	int any_dirty = 0;
 
 	for (size_t i = 0; i < editor->files.size; i++) {
 		EditorFile* ef = vector_get(&editor->files, i);
+
+		if (ef->type == EDITOR_FILE_PROTOTYPE) {
+			continue;
+		}
 
 		if (ef->file.dirty) {
 			if (!ef->file.filename && 
@@ -1253,85 +972,41 @@ static int show_and_handle_dirty_files(Editor* editor) {
 			}
 
 			if (!any_dirty) {
-				first_dirty = i;
-
-				clean_terminal();
-				hide_cursor();
-
-				char msg[] = "the following files haven't been saved:\n\n";
-				write(STDOUT_FILENO, msg, strlen(msg));
-
 				any_dirty = 1;
 			}
-
-			write(STDOUT_FILENO, "- ", 2);
-
-			if (ef->file.filename) {
-				write(
-					STDOUT_FILENO, 
-					ef->file.filename, 
-					strlen(ef->file.filename));
-			}
-
-			else {
-				char filename[] = "untitled (internal)";
-
-				write(STDOUT_FILENO, filename, strlen(filename));
-			}
-
-			write(STDOUT_FILENO, "\n", 1);
 		}
 	}
 
 	if (any_dirty) {
-		char msg[] = "\nwhat do you wanna do?\n\n";
-		write(STDOUT_FILENO, msg, strlen(msg));
+		prompt_init(
+			&editor->status_bar,
+			PROMPT_UNSAVED_CHANGES,
+			PT_INFO
+		);
 
-		char other_msg[] = "- quit anyway (1)\n"
-						   "- save all, but untitled files, and quit (2)\n"
-						   "- manually save them (3)\n";
+		editor->status_bar.invert_color = 1;
 
-		write(STDOUT_FILENO, other_msg, strlen(other_msg));
+		WindowOptions options = {
+			.pos_type = WINDOWPOS_CENTRALIZED,
+			.sw = 0.3,
+			.sh = 0.5,
+			.tsize = editor->tsize,
+			.tab_size = editor->config.tab_size,
+			.on_select = on_select_handle_dirty_program
+		};
 
-		while (1) { // blocks the main thread
+		editor->window = window_new(&options);
+		editor->has_window = 1;
 
-			struct event event = parser_read_key();
+		u32string quit = u32string_from("quit anyway");
+		u32string quits = u32string_from("save and quit");
+		u32string try = u32string_from("return");
 
-			if (event.type != EVENT_KEY) {
-				continue;
-			}
+		vector_push(&editor->window.content, &quit);
+		vector_push(&editor->window.content, &quits);
+		vector_push(&editor->window.content, &try);
 
-			struct normal_key key = event.key;
-
-			if (key.content == U'3') {
-				if (editor->actual_file_index != first_dirty) {
-					editor_change_actual_file(editor, first_dirty);
-				}
-
-				show_cursor();
-				return 1;
-			}
-
-			if (key.content == U'1') {
-				show_cursor();
-				break;
-			}
-
-			if (key.content == U'2') {
-				for (size_t i = first_dirty; i < editor->files.size; i++) {
-					EditorFile* ef = vector_get(&editor->files, i);
-
-					if (ef->file.dirty && ef->file.filename) {
-						editor->actual_file = ef;
-
-						editor_save_file(editor);
-					}
-				}
-
-				show_cursor();
-				break;
-			}
-		}
+		return 1;
 	}
 
 	return 0;
@@ -1340,24 +1015,18 @@ static int show_and_handle_dirty_files(Editor* editor) {
 int editor_quit(Editor* editor) {
 	reset_color();
 
-	int ret = 0;
-
 	if (!editor->config.auto_save_quit) {
-		ret = show_and_handle_dirty_files(editor);
-	}
+		if (handle_dirty_files(editor) == 1) {
+			return 1;
+		}
 
-	else {
-		for (size_t i = 0; i < editor->files.size; i++) {
-			EditorFile* ef = vector_get(&editor->files, i);
-
-			if (ef->file.dirty && ef->file.filename) {
-				file_save(&ef->file, &editor->result);
-			}			
+		else {
+			return 0;
 		}
 	}
 
-	if (ret == 1) {
-		return 1;
+	else {
+		save_valid_files(editor);
 	}
 
 	if (editor->debug_mode) {
@@ -1396,6 +1065,10 @@ void editor_start_and_create_selection(Editor* editor) {
 void editor_selection_clear(Editor* editor) {
 	selection_clear(&editor->sel);
 	editor->selecting = 0;
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, "editor_selection_clear: SUCCESS");		
+	}
 }
 
 void editor_selection_complete(Editor* editor) {
@@ -1456,7 +1129,7 @@ int editor_select_line
 			&editor->actual_file->file, 
 			y, 
 			&editor->sel,
-			&editor->result);
+			editor->config.select_line_selects_next);
 
 		if (ret < 0) {
 			return ret;
@@ -1467,7 +1140,9 @@ int editor_select_line
 		editor_cursor_move(editor, editor->sel.end);
 
 		if (editor->debug_mode) {
-			log_write(&editor->log, "editor_select_line: SUCCESS");
+			log_write(&editor->log, 
+				"editor_select_line: %zu selected",
+				editor->cursor.pos.y);
 		}
 
 		return 0;
@@ -1484,8 +1159,7 @@ int editor_select_all_file(Editor* editor) {
 	else {
 		int ret = file_select_all_file(
 			&editor->actual_file->file, 
-			&editor->sel, 
-			&editor->result);
+			&editor->sel);
 
 		if (ret < 0) {
 			return ret;
@@ -1518,24 +1192,29 @@ void editor_select_word(Editor* editor) {
 	size_t y = editor->cursor.pos.y;
 	size_t x = editor->cursor.pos.x;
 
-	const u32string* line = file_get_line_text(&editor->actual_file->file, y);
+	const u32string* line = file_get_line_text_const(
+		&editor->actual_file->file, 
+		y
+	);
 
 	size_t size = u32string_size(line);
 
 	if (x == size) {
-		return;
+		x = size - 1;
 	}
 
-	if (is_word_char(u32string_char(line, x))) {
+	IsWordChar is_word = editor_get_IsWordChar(editor);
+
+	if (is_word(u32string_char(line, x))) {
 		for (size_t i = x; i-- > 0;) {
-			if (!is_word_char(u32string_char(line, i))) {
+			if (!is_word(u32string_char(line, i))) {
 				start = i + 1;
 				break;
 			}
 		}
 
 		for (size_t i = x; i < size; i++) {
-			if (!is_word_char(u32string_char(line, i))) {
+			if (!is_word(u32string_char(line, i))) {
 				end = i;
 				break;
 			}
@@ -1549,14 +1228,14 @@ void editor_select_word(Editor* editor) {
 
 	else {
 		for (size_t i = x; i-- > 0;) {
-			if (is_word_char(u32string_char(line, i))) {
+			if (is_word(u32string_char(line, i))) {
 				start = i + 1;
 				break;
 			}
 		}
 
 		for (size_t i = x; i < size; i++) {
-			if (is_word_char(u32string_char(line, i))) {
+			if (is_word(u32string_char(line, i))) {
 				end = i;
 				break;
 			}
@@ -1582,8 +1261,16 @@ void editor_select_word(Editor* editor) {
 		editor->sel.end.x = end;
 		editor->sel.start.y = y;
 		editor->sel.end.y = y;
-	} else {
+	} 
+
+	else {
 		editor_selection_clear(editor);
+	}
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, 
+			"editor_select_word: start = (%zu, %zu), end = (%zu, %zu)",
+			start, y, end, y);		
 	}
 }
 
@@ -1609,6 +1296,11 @@ int editor_copy_selection(Editor* editor) {
 	}
 
 	if (ret < 0) {
+		if (editor->debug_mode) {
+			log_write(&editor->log, "editor_copy_selection: %s",
+				editor->result.reason);		
+		}
+
 		return ret;
 	}
 
@@ -1637,6 +1329,13 @@ int editor_paste_clipboard(Editor* editor) {
 	if (!u32string_is_empty(&editor->cb.text)) {
 		Position cursor_remove = editor->cursor.pos;
 
+		if (editor->config.use_autocomplete) {
+			editor_decrement_line_freq(
+				editor,
+				editor->cursor.pos.y
+			);
+		}
+
 		int ret = file_paste_clipboard(
 			&editor->actual_file->file, 
 			&editor->cb, 
@@ -1646,6 +1345,12 @@ int editor_paste_clipboard(Editor* editor) {
 		editor_cursor_update(editor);
 
 		if (ret < 0) {
+			if (editor->debug_mode) {
+				log_write(&editor->log, 
+					"editor_paste_clipboard: %s",
+					editor->result.reason);		
+			}
+
 			return ret;
 		}
 
@@ -1656,6 +1361,12 @@ int editor_paste_clipboard(Editor* editor) {
 		Position cursor_insert = editor->cursor.pos;
 		Position start = cursor_remove;
 		Position end = editor->cursor.pos;
+
+		if (editor->config.use_autocomplete) {
+			for (size_t i = start.y; i <= end.y; i++) {
+				editor_increment_line_freq(editor, i);
+			}
+		}
 
 		u32string text = u32string_clone(&editor->cb.text);
 
@@ -1673,7 +1384,7 @@ int editor_paste_clipboard(Editor* editor) {
 		log_write(&editor->log, "editor_paste_clipboard: SUCCESS");
 	}
 
-	return 0;
+	return EIE_OK;
 }
 
 
@@ -1738,7 +1449,7 @@ void editor_move_cursor_up(Editor* editor) {
 
 	size_t y = editor->cursor.pos.y - 1;
 
-	const u32string* text = file_get_line_text(
+	const u32string* text = file_get_line_text_const(
 		&editor->actual_file->file,
 		y
 	);
@@ -1772,7 +1483,7 @@ void editor_move_cursor_down(Editor* editor)
 
 	size_t y = editor->cursor.pos.y + 1;
 
-	const u32string* text = file_get_line_text(
+	const u32string* text = file_get_line_text_const(
 		&editor->actual_file->file,
 		y
 	);
@@ -1813,35 +1524,6 @@ void editor_move_cursor_beginning_line(Editor* editor) {
 	}
 }
 
-void editor_move_cursor_indent_line(Editor* editor) 
-{
-	if (editor->sel.active && !editor->selecting) {
-		editor_selection_clear(editor);
-	}
-
-	u32string* line = file_get_line_text(
-		&editor->actual_file->file, 
-		editor->cursor.pos.y);
-
-	size_t indent = u32string_get_indent(
-		line,
-		editor->actual_file->file.use_spaces);
-
-	editor->cursor.pos.x = indent;
-
-	editor_cursor_move(
-		editor,
-		(Position) { indent, editor->cursor.pos.y });
-
-	if (editor->sel.active) {
-		editor->sel.end.y = indent;
-	}
-
-	if (editor->debug_mode) {
-		log_write(&editor->log, 
-			"editor_move_cursor_to_indent_of_line: SUCCESS");
-	}
-}
 
 void editor_move_cursor_end_line(Editor* editor) 
 {
@@ -1884,7 +1566,8 @@ void editor_scroll_up(Editor* editor) {
 		}
 
 		if (editor->debug_mode) {
-			log_write(&editor->log, "editor_scroll_up: SUCCESS");
+			log_write(&editor->log, "editor_scroll_up: row = %zu",
+				editor->view.row_offset);
 		}
 	}
 }
@@ -1895,6 +1578,11 @@ void editor_scroll_left(Editor* editor) {
 
 		if (editor->config.cursor_follow_scroll) {
 			editor_clamp_cursor_to_view(editor);
+		}
+
+		if (editor->debug_mode) {
+			log_write(&editor->log, "editor_scroll_left: col = %zu",
+				editor->view.col_offset);
 		}
 	}
 }
@@ -1913,8 +1601,8 @@ void editor_scroll_down(Editor* editor) {
 		}
 
 		if (editor->debug_mode) {
-			log_write(&editor->log, 
-				"editor_scroll_down: SUCCESS");
+			log_write(&editor->log, "editor_scroll_down: row = %zu",
+				editor->view.row_offset);
 		}
 	}	
 }
@@ -1931,6 +1619,9 @@ void editor_scroll_right(Editor* editor) {
 	if (editor->config.cursor_follow_scroll) {
 		editor_clamp_cursor_to_view(editor);
 	}
+
+	log_write(&editor->log, "editor_scroll_right: col = %zu",
+		editor->view.col_offset);
 }
 
 void editor_scroll_up_terminal_size(Editor* editor) {
@@ -1953,7 +1644,8 @@ void editor_scroll_up_terminal_size(Editor* editor) {
 
 		if (editor->debug_mode) {
 			log_write(&editor->log, 
-				"editor_scroll_up_terminal_size: SUCCESS");
+				"editor_scroll_up_terminal_size: row = %zu",
+				editor->view.row_offset);
 		}
 	}
 }
@@ -1987,46 +1679,38 @@ void editor_scroll_down_terminal_size
 
 		if (editor->debug_mode) {
 			log_write(&editor->log, 
-				"editor_scroll_down_terminal_size: SUCCESS");
+				"editor_scroll_down_terminal_size: row = %zu",
+				editor->view.row_offset);
 		}
 	}
 }
 
 
-
-/// --- MOVE_BETWEEN CALLBACKS ---
-
-int is_alnum(uint32_t c) {
-	return isalnum((unsigned char) c);
-}
-
-int is_word_char(uint32_t c) {
-	return isalnum((unsigned char) c) ||
-		   ispunct((unsigned char) c);	
-}
-
 /// --- MOVE_BETWEEN ---
 
-void editor_move_between_words_right
-(
-	Editor* editor,
-	WordFinder finder
-) 
-{
+void editor_move_between_words_right(Editor* editor,int fullword) {
 	size_t end = 0;
 	size_t y = editor->cursor.pos.y;
 	size_t x = editor->cursor.pos.x;
 
-	const u32string* line = file_get_line_text(&editor->actual_file->file, y);
+	const u32string* line = file_get_line_text_const(
+		&editor->actual_file->file, 
+		y
+	);
+
 	size_t size = u32string_size(line);
 
 	if (x == size) {
 		return;
 	}
 
-	if (finder(u32string_char(line, x))) {
+	IsWordChar is_word = (fullword)
+		? is_utf_word_char
+		: editor_get_IsWordChar(editor);
+
+	if (is_word(u32string_char(line, x))) {
 		for (size_t i = x; i < size; i++) {
-			if (!finder(u32string_char(line, i))) {
+			if (!is_word(u32string_char(line, i))) {
 				end = i;
 				break;
 			}
@@ -2039,7 +1723,7 @@ void editor_move_between_words_right
 
 	else {
 		for (size_t i = x; i < size; i++) {
-			if (finder(u32string_char(line, i))) {
+			if (is_word(u32string_char(line, i))) {
 				end = i;
 				break;
 			}
@@ -2054,17 +1738,24 @@ void editor_move_between_words_right
 	// 	return;
 	// }
 
-	editor->cursor.pos.x = end;
+	editor_cursor_move(editor, (Position) { end, editor->cursor.pos.y });
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, 
+			"editor_move_between_words_right: end before = (%zu, %zu)",
+			editor->sel.end.x, editor->sel.end.y);
+	}
 
 	selection_update(&editor->sel, editor->cursor.pos);
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, 
+			"editor_move_between_words_right: end after = (%zu, %zu)",
+			editor->sel.end.x, editor->sel.end.y);
+	}
 }
 
-void editor_move_between_words_left
-(
-	Editor* editor,
-	WordFinder finder
-) 
-{
+void editor_move_between_words_left(Editor* editor, int fullword) {
 	if (editor->cursor.pos.x == 0) {
 		return;
 	}
@@ -2073,11 +1764,18 @@ void editor_move_between_words_left
 	size_t y = editor->cursor.pos.y;
 	size_t x = editor->cursor.pos.x;
 
-	const u32string* line = file_get_line_text(&editor->actual_file->file, y);
+	const u32string* line = file_get_line_text_const(
+		&editor->actual_file->file, 
+		y
+	);
 
-	if (finder(u32string_char(line, x - 1))) {
+	IsWordChar is_word = (fullword)
+		? is_utf_word_char
+		: editor_get_IsWordChar(editor);
+
+	if (is_word(u32string_char(line, x - 1))) {
 		for (size_t i = x; i-- > 0;) {
-			if (!finder(u32string_char(line, i))) {
+			if (!is_word(u32string_char(line, i))) {
 				start = i + 1;
 				break;
 			}
@@ -2086,7 +1784,7 @@ void editor_move_between_words_left
 
 	else {
 		for (size_t i = x; i-- > 0;) {
-			if (finder(u32string_char(line, i))) {
+			if (is_word(u32string_char(line, i))) {
 				start = i + 1;
 				break;
 			}
@@ -2097,9 +1795,22 @@ void editor_move_between_words_left
 	// 	return;
 	// }
 
-	editor->cursor.pos.x = start;
+
+	editor_cursor_move(editor, (Position) { start, editor->cursor.pos.y });
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, 
+			"editor_move_between_words_left: end before = (%zu, %zu)",
+			editor->sel.end.x, editor->sel.end.y);
+	}
 
 	selection_update(&editor->sel, editor->cursor.pos);
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, 
+			"editor_move_between_words_left: end after = (%zu, %zu)",
+			editor->sel.end.x, editor->sel.end.y);
+	}
 }
 
 
@@ -2123,15 +1834,40 @@ void editor_operation_insert
 		&op->insert.text,
 		u32string_size(&op->insert.text) - 1) == U'\n';
 
+	if (editor->config.use_autocomplete) {
+		editor_decrement_line_freq(
+			editor,
+			editor->cursor.pos.y
+		);
+	}
+
 	file_paste_clipboard(
 		&editor->actual_file->file,
 		&cb,
 		&editor->cursor,
 		&editor->result);
 
+	if (editor->config.use_autocomplete) {
+		for (size_t i = op->insert.start.y; i <= op->insert.end.y; i++) {
+			editor_increment_line_freq(
+				editor,
+				i
+			);
+		}
+	}
+
 	clipboard_free(&cb);
 
 	editor_cursor_move(editor, op->cursor_insert);
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, 
+			"editor_operation_insert: "
+			"cr = (%zu, %zu), "
+			"ci = (%zu, %zu)", 
+			op->cursor_remove.x, op->cursor_remove.y, 
+			op->cursor_insert.x, op->cursor_insert.y);
+	}
 }
 
 void editor_operation_remove
@@ -2148,12 +1884,37 @@ void editor_operation_remove
 
 	editor->cursor.pos = op->cursor_insert;
 
+	if (editor->config.use_autocomplete) {
+		for (size_t i = sel.start.y; i <= sel.end.y; i++) {
+			editor_decrement_line_freq(
+				editor,
+				i
+			);
+		}
+	}
+
 	file_delete_selection(
 		&editor->actual_file->file, 
-		&sel, 
+		&sel,
 		&editor->result);
 
 	editor_cursor_move(editor, op->cursor_remove);
+
+	if (editor->config.use_autocomplete) {
+		editor_increment_line_freq(
+			editor,
+			editor->cursor.pos.y
+		);
+	}
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, 
+			"editor_operation_remove: "
+			"cr = (%zu, %zu), "
+			"ci = (%zu, %zu)", 
+			op->cursor_remove.x, op->cursor_remove.y, 
+			op->cursor_insert.x, op->cursor_insert.y);
+	}
 }
 
 void editor_operation_indent
@@ -2162,8 +1923,8 @@ void editor_operation_indent
 	const Operation* op
 )
 {
-	size_t start = op->unindent.start.y;
-	size_t end = op->unindent.end.y;
+	size_t start = op->indent.start.y;
+	size_t end = op->indent.end.y;
 
 	int move = start <= editor->cursor.pos.y ||
 			   editor->cursor.pos.y <= end;
@@ -2198,6 +1959,19 @@ void editor_operation_indent
 
 	if (move) {
 		editor_cursor_move(editor, op->cursor_insert);
+	}
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, 
+			"editor_operation_indent: "
+			"start = %zu, "
+			"end = %zu, "
+			"cr = (%zu, %zu), "
+			"ci = (%zu, %zu)",
+			op->indent.start.y,
+			op->indent.end.y,
+			op->cursor_remove.x, op->cursor_remove.y, 
+			op->cursor_insert.x, op->cursor_insert.y);
 	}
 }
 
@@ -2236,7 +2010,7 @@ void editor_operation_unindent
 
 			size_t move = 0;
 
-			u32string* text = file_get_line_text(
+			const u32string* text = file_get_line_text_const(
 				&editor->actual_file->file,
 				start);
 
@@ -2261,6 +2035,19 @@ void editor_operation_unindent
 	if (move) {
 		editor_cursor_move(editor, op->cursor_remove);	
 	}
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, 
+			"editor_operation_unindent: "
+			"start = %zu, "
+			"end = %zu, "
+			"cr = (%zu, %zu), "
+			"ci = (%zu, %zu)",
+			op->unindent.start.y,
+			op->unindent.end.y,
+			op->cursor_remove.x, op->cursor_remove.y, 
+			op->cursor_insert.x, op->cursor_insert.y);
+	}
 }
 
 void editor_operation_comment
@@ -2273,7 +2060,8 @@ void editor_operation_comment
 		return;
 	}
 
-	const struct language_rules* rules = editor->actual_file->language->rules;
+	const struct language_rules* rules = 
+		editor->actual_file->language->rules;
 
 	if (!rules) {
 		return;
@@ -2304,8 +2092,7 @@ void editor_operation_comment
 			&editor->actual_file->file,
 			op->comment.start.y,
 			comment_fmt,
-			&move_cursor,
-			&editor->result
+			&move_cursor
 		);
 	}
 
@@ -2316,6 +2103,19 @@ void editor_operation_comment
 
 	else {
 		editor_cursor_move(editor, op->cursor_insert);
+	}
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, 
+			"editor_operation_comment: "
+			"start = %zu, "
+			"end = %zu, "
+			"cr = (%zu, %zu), "
+			"ci = (%zu, %zu)",
+			op->comment.start.y,
+			op->comment.end.y,
+			op->cursor_remove.x, op->cursor_remove.y, 
+			op->cursor_insert.x, op->cursor_insert.y);
 	}
 }
 
@@ -2341,6 +2141,13 @@ static void delete_from_replacements
 		const Position* pos = vector_get_const(replacements, i);
 
 		if (y != pos->y) {
+			if (!first && editor->config.use_autocomplete) {
+				editor_increment_line_freq(
+					editor,
+					y
+				);			
+			}
+
 			y = pos->y;
 			line_text = vector_get(&editor->actual_file->file.lines, y);
 
@@ -2349,7 +2156,13 @@ static void delete_from_replacements
 		}
 
 		if (first) {
-			file_set_line_dirty(&editor->actual_file->file, y);
+			if (editor->config.use_autocomplete) {
+				editor_decrement_line_freq(
+					editor,
+					y
+				);
+			}
+
 			first = 0;
 		}
 
@@ -2371,6 +2184,18 @@ static void delete_from_replacements
 	}
 
 	assert(replacements->size == new_replacements.size);
+
+	// resolving a BUG 😠: 13/08/26
+	size_t start = ((Position*) vector_get(replacements, 0))->y;
+	size_t end = ((Position*) vector_get(replacements, 
+		replacements->size - 1))->y;
+
+	for (size_t y = start; y <= end; y++) {
+		file_set_line_dirty(
+			&editor->actual_file->file,
+			y
+		);
+	}
 
 	vector_free(replacements);
 	*replacements = new_replacements;
@@ -2401,6 +2226,13 @@ static void replace_from_replacements
 		const Position* pos = vector_get_const(replacements, i);
 
 		if (y != pos->y) {
+			if (!first && editor->config.use_autocomplete) {
+				editor_increment_line_freq(
+					editor,
+					y
+				);			
+			}
+
 			y = pos->y;
 			line_text = vector_get(&editor->actual_file->file.lines, y);
 
@@ -2409,7 +2241,13 @@ static void replace_from_replacements
 		}
 
 		if (first) {
-			file_set_line_dirty(&editor->actual_file->file, y);
+			if (editor->config.use_autocomplete) {
+				editor_decrement_line_freq(
+					editor,
+					y
+				);			
+			}
+
 			first = 0;
 		}
 
@@ -2437,6 +2275,19 @@ static void replace_from_replacements
 	}
 
 	assert(replacements->size == new_replacements.size);
+
+	// resolving a BUG 😠: 13/08/26
+	size_t start = ((Position*) vector_get(replacements, 0))->y;
+	size_t end = ((Position*) vector_get(replacements, 
+		replacements->size - 1))->y;
+
+	for (size_t y = start; y <= end; y++) {
+		file_set_line_dirty(
+			&editor->actual_file->file,
+			y
+		);
+	}
+
 	vector_free(replacements);
 	*replacements = new_replacements;
 }
@@ -2473,13 +2324,16 @@ void editor_operation_replace
 	size_t pattern_size = u32string_size(&op->replace.old_text);
 	size_t text_size = u32string_size(&op->replace.new_text);
 
-	ssize_t offset = text_size - pattern_size;
+	ssize_t offset = (ssize_t) text_size - (ssize_t) pattern_size;
 
 	if (editor->sel.active) {
 		editor->sel.end.x += offset;
 	}
 
-	editor->cursor.pos.x += offset;
+	editor->cursor.pos = (offset > 0)
+		? op->cursor_insert
+		: op->cursor_remove;
+
 	editor_cursor_update(editor);
 }
 
@@ -2492,7 +2346,18 @@ void editor_operation_linemove
 	size_t start = op->linemove.start.y;
 	size_t end = op->linemove.end.y;
 
-	log_write(&editor->log, "%zu, %zu", start, end);
+	if (editor->debug_mode) {
+		log_write(&editor->log, 
+			"editor_operation_linemove: "
+			"start = %zu, "
+			"end = %zu, "
+			"cr = (%zu, %zu), "
+			"ci = (%zu, %zu)",
+			start,
+			end,
+			op->cursor_remove.x, op->cursor_remove.y, 
+			op->cursor_insert.x, op->cursor_insert.y);
+	}
 
 	if (op->linemove.direction == LINEMOVE_UP) {
 		if (start != end) {
@@ -2587,17 +2452,112 @@ int editor_insert_char(Editor* editor, uint32_t c) {
 
 	Position cursor_remove = editor->cursor.pos;
 
+	IsWordChar is_word = editor_get_IsWordChar(editor);
+
+	// POSSIBLE OPTIMIZATION
+
+	// if (editor->config.use_autocomplete) {
+	// 	const u32string* text = file_get_line_text(
+	// 		&editor->actual_file->file,
+	// 		editor->cursor.pos.y
+	// 	);
+
+	// 	size_t x = editor->cursor.pos.x;
+
+	// 	if (!is_word(c)) {
+	// 		size_t old_start;
+	// 		size_t old_end;
+
+	// 		if (x > 0 && is_word(u32string_char(text, x - 1))) {
+	// 			size_t start = x - 1;
+
+	// 			while (start > 0 && 
+	// 				is_word(u32string_char(text, start - 1)))
+	// 			{
+	// 				start--;
+	// 			}
+
+	// 			const uint32_t* word = u32string_into_ptr_const(text) + 
+	// 				start;
+
+	// 			editor_file_update_word_frequency(
+	// 				editor->actual_file,
+	// 				word,
+	// 				x - start,
+	// 				1
+	// 			); 
+
+	// 			old_start = start;		
+	// 		}
+
+	// 		if (x < u32string_size(text) &&
+	// 			is_word(u32string_char(text, x + 1)))
+	// 		{
+	// 			size_t end = x + 1;
+
+	// 			while (end < u32string_size(text) &&
+	// 				is_word(u32string_char(text, end)))
+	// 			{
+	// 				end++;
+	// 			}
+
+	// 			const uint32_t* word = 
+	// 				u32string_into_ptr_const(text) + x;
+
+	// 			editor_file_update_word_frequency(
+	// 				editor->actual_file,
+	// 				word,
+	// 				end - x,
+	// 				1
+	// 			);
+
+	// 			old_end = end;
+
+	// 			word = u32string_into_ptr_const(text) + old_start;
+
+	// 			editor_file_update_word_frequency(
+	// 				editor->actual_file,
+	// 				word,
+	// 				old_end - old_start,
+	// 				-1
+	// 			);				
+	// 		}
+
+	// 		if (editor->debug_mode) {
+	// 			log_write(&editor->log, 
+	// 				"editor_insert_char: words now: %zu",
+	// 				trie_count(&editor->actual_file->words));
+	// 		}
+	// 	}
+	// }
+
+	if (!is_word(c) &&
+		editor->config.use_autocomplete) 
+	{
+		editor_decrement_line_freq(
+			editor,
+			editor->cursor.pos.y
+		);
+	}
+
 	int ret = file_insert_char(
 		&editor->actual_file->file,
 		editor->cursor.pos,
-		c,
-		&editor->result
+		c
 	);
 
 	if (ret < 0) {
 		return ret;
 	}
 
+	if (!is_word(c) &&
+		editor->config.use_autocomplete) 
+	{
+		editor_increment_line_freq(
+			editor,
+			editor->cursor.pos.y
+		);
+	}
 
 	editor_move_cursor_right(editor);
 
@@ -2616,11 +2576,7 @@ int editor_insert_char(Editor* editor, uint32_t c) {
 
 	stack_clear(&editor->actual_file->redo);
 
-	const struct language_rules* rules = (editor->actual_file->language)
-		? editor->actual_file->language->rules
-		: NULL;
-
-	if (operation_can_merge(last, &op, rules)) {
+	if (operation_can_merge(last, &op, is_word)) {
 		operation_merge(last, &op);
 	}
 
@@ -2660,6 +2616,13 @@ int editor_insert_tab(Editor* editor) {
 	u32string text;
 	size_t move;
 
+	if (editor->config.use_autocomplete) {
+		editor_decrement_line_freq(
+			editor,
+			editor->cursor.pos.y
+		);
+	}
+
 	if (editor->actual_file->file.use_spaces) {
 		text = u32string_new();
 
@@ -2681,11 +2644,21 @@ int editor_insert_tab(Editor* editor) {
 		move = 1;
 	}
 
+	if (editor->config.use_autocomplete) {
+		editor_increment_line_freq(
+			editor,
+			editor->cursor.pos.y
+		);
+	}
+
 	editor_cursor_move(editor,
 		(Position) { editor->cursor.pos.x + move,
 					 editor->cursor.pos.y } );
 
-	file_set_line_dirty(&editor->actual_file->file, editor->cursor.pos.y);
+	file_set_line_dirty(&editor->actual_file->file, 
+		editor->cursor.pos.y);
+
+	file_set_has_dirty_line(&editor->actual_file->file);
 
 	Position cursor_insert = editor->cursor.pos;
 	Position start = cursor_remove;
@@ -2717,12 +2690,44 @@ static int only_insert_a_newline
 	Editor* editor
 )
 {
+	/*
+	asd| or as|d
+	*/
 	Position cursor_remove = editor->cursor.pos;
+
+	if (editor->config.use_autocomplete) {
+		editor_decrement_line_freq(
+			editor,
+			editor->cursor.pos.y
+		);
+	}
 
 	int ret = file_insert_newline(
 		&editor->actual_file->file,
 		editor->cursor.pos,
 		&editor->result);
+
+
+	/*
+	asd
+	|
+
+	or
+
+	as
+	|d
+	*/
+	if (editor->config.use_autocomplete) {
+		editor_increment_line_freq(
+			editor,
+			editor->cursor.pos.y
+		);
+
+		editor_increment_line_freq(
+			editor,
+			editor->cursor.pos.y + 1
+		);
+	}
 
 	if (ret < 0) {
 		return ret;
@@ -2756,7 +2761,13 @@ static int insert_delimiter_pair
 	Editor* editor,
 	Position cursor_remove
 )
-{
+{	
+	/*
+
+	{ // already correct
+	|}
+
+	*/
 	int use_spaces = editor->actual_file->file.use_spaces;
 
 	size_t indent;
@@ -2769,7 +2780,7 @@ static int insert_delimiter_pair
 		: U'\t';
 
 	{
-		u32string* prev_text = file_get_line_text(
+		const u32string* prev_text = file_get_line_text_const(
 			&editor->actual_file->file,
 			editor->cursor.pos.y - 1
 		);
@@ -2781,7 +2792,7 @@ static int insert_delimiter_pair
 
 	size_t new_indent = indent + tab_size;
 
-	int ret; 
+	int ret;
 
 	{
 		u32string* text = file_get_line_text(
@@ -2802,6 +2813,25 @@ static int insert_delimiter_pair
 
 	if (ret < 0) {
 		return ret;
+	}
+
+	/*
+	
+	{ // already correct
+	| // increment now
+	} // increment now
+
+	*/
+	if (editor->config.use_autocomplete) {
+		editor_increment_line_freq(
+			editor,
+			editor->cursor.pos.y
+		);
+
+		editor_increment_line_freq(
+			editor,
+			editor->cursor.pos.y + 1
+		);
 	}
 
 	editor->cursor.pos.y++;
@@ -2893,6 +2923,10 @@ static void insert_newline_and_indent
 	Position cursor_remove
 )
 {	
+	/*
+	\tasd // already correct
+	|
+	*/
 	int use_spaces = editor->actual_file->file.use_spaces;
 
 	size_t indent;
@@ -2935,6 +2969,13 @@ static void insert_newline_and_indent
 		for (size_t i = 0; i < new_indent; i++) {
 			u32string_insert(text, c, i);
 		}
+	}
+
+	if (editor->config.use_autocomplete) {
+		editor_increment_line_freq(
+			editor,
+			editor->cursor.pos.y
+		);
 	}
 
 	editor_cursor_move(
@@ -3017,7 +3058,7 @@ int editor_insert_newline(Editor* editor) {
 	int is_delimiter_pair = 0;
 
 	{	
-		u32string* line_text = file_get_line_text(
+		const u32string* line_text = file_get_line_text_const(
 			&editor->actual_file->file, 
 			editor->cursor.pos.y);
 
@@ -3029,6 +3070,13 @@ int editor_insert_newline(Editor* editor) {
 				u32string_char(line_text, editor->cursor.pos.x));
 	}
 
+	if (editor->config.use_autocomplete) {
+		editor_decrement_line_freq(
+			editor,
+			editor->cursor.pos.y
+		);
+	}
+
 	// file->dirty = 1
 	ret = file_insert_newline(
 		&editor->actual_file->file, 
@@ -3038,6 +3086,16 @@ int editor_insert_newline(Editor* editor) {
 	if (ret < 0) {
 		return ret;
 	}
+
+	if (editor->config.use_autocomplete) {
+		editor_increment_line_freq(
+			editor,
+			editor->cursor.pos.y
+		);
+
+		// the actual line already has the correct frequency
+	}
+
 
 	Position cursor_remove = editor->cursor.pos;
 
@@ -3095,12 +3153,27 @@ static int delete_selection
 		&editor->sel,
 		&editor->result
 	);
-	log_write(&editor->log, "delete_selection: cb.linewise = %d", cb.linewise);
+
+	if (editor->config.use_autocomplete) {
+		for (size_t i = a.y; i <= b.y; i++) {
+			editor_decrement_line_freq(
+				editor,
+				i
+			);
+		}
+	}
 
 	int ret = file_delete_selection(
 		&editor->actual_file->file, 
 		&editor->sel, 
 		&editor->result);
+
+	if (editor->config.use_autocomplete) {
+		editor_increment_line_freq(
+			editor,
+			a.y
+		);
+	}
 
 	if (ret < 0) {
 		clipboard_free(&cb);
@@ -3147,7 +3220,7 @@ static int delete_delimiter_pair
 	uint32_t close;
 
 	{
-		const u32string* text = file_get_line_text(
+		const u32string* text = file_get_line_text_const(
 			&editor->actual_file->file,
 			editor->cursor.pos.y);
 
@@ -3159,17 +3232,30 @@ static int delete_delimiter_pair
 	// to 1
 	editor_move_cursor_right(editor);
 
+	if (editor->config.use_autocomplete) {
+		editor_decrement_line_freq(
+			editor,
+			editor->cursor.pos.y
+		);
+	}
+
 	for (size_t i = 0; i < 2; i++) {
 		ret = file_delete_char(
 			&editor->actual_file->file,
-			editor->cursor.pos,
-			&editor->result);
+			editor->cursor.pos);
 
 		editor_move_cursor_left(editor);
 
 		if (ret < 0) {
 			return EIE_FATAL_ERROR;
 		}
+	}
+
+	if (editor->config.use_autocomplete) {
+		editor_increment_line_freq(
+			editor,
+			editor->cursor.pos.y
+		);
 	}
 
 	Position cursor_remove = editor->cursor.pos;
@@ -3206,20 +3292,147 @@ static int delete_single_char
 	uint32_t c;
 
 	{
-		const u32string* text = file_get_line_text(
+		const u32string* text = file_get_line_text_const(
 			&editor->actual_file->file,
 			editor->cursor.pos.y);
 
 		c = u32string_char(text, editor->cursor.pos.x - 1);
 	}
 
+	// POSSIBLE OPTIMIZATION
+
+	// if (editor->config.use_autocomplete && 
+	// 	trie_count(&editor->actual_file->words) > 0) 
+	// {
+	// 	const u32string* text = file_get_line_text(
+	// 		&editor->actual_file->file,
+	// 		editor->cursor.pos.y
+	// 	);
+
+	// 	size_t x = editor->cursor.pos.x;
+	// 	size_t size = u32string_size(text);
+
+	// 	// asd| or as|d
+	// 	if (is_word(c) && size > 0) {
+	// 		size_t start = editor->cursor.pos.x - 1;
+	// 		size_t end = x;
+
+	// 		while (start > 0 && 
+	// 			is_word(u32string_char(text, start - 1))) 
+	// 		{
+	// 			start--;
+	// 		}
+
+	// 		while (end < size &&
+	// 			is_word(u32string_char(text, end)))
+	// 		{
+	// 			end++;
+	// 		}
+
+	// 		const uint32_t* word = u32string_into_ptr_const(text) + 
+	// 			start;
+
+	// 		editor_file_update_word_frequency(
+	// 			editor->actual_file,
+	// 			word,
+	// 			end - start,
+	// 			-1
+	// 		);
+	// 	}
+
+	// 	// as |d
+	// 	if (!is_word(c) && size > 0 &&
+	// 		x > 1 &&
+	// 		x < size &&
+	// 		is_word(u32string_char(text, x - 2)) &&
+	// 		is_word(u32string_char(text, x))) 
+	// 	{
+	// 		size_t start = editor->cursor.pos.x;
+	// 		size_t end = x;
+
+	// 		u32string new_word;
+
+	// 		size_t y = start - 1;
+
+	// 		while (y > 0 &&
+	// 			is_word(u32string_char(text, y - 1)))
+	// 		{
+	// 			y--;
+	// 		}
+
+	// 		const uint32_t* word = 
+	// 			u32string_into_ptr_const(text) + y;
+
+	// 		editor_file_update_word_frequency(
+	// 			editor->actual_file,
+	// 			word,
+	// 			(start - 1) - y,
+	// 			-1
+	// 		);
+
+	// 		new_word = u32string_from_raw_copy(
+	// 			word,
+	// 			(start - 1) - y
+	// 		);
+
+	// 		while (end < size &&
+	// 			is_word(u32string_char(text, end)))
+	// 		{
+	// 			end++;
+	// 		}
+
+	// 		word = u32string_into_ptr_const(text) + start;
+
+	// 		editor_file_update_word_frequency(
+	// 			editor->actual_file,
+	// 			word,
+	// 			end - start,
+	// 			-1
+	// 		);
+
+	// 		u32string_append_raw(
+	// 			&new_word,
+	// 			word,
+	// 			end - start
+	// 		);
+
+	// 		editor_file_update_word_frequency(
+	// 			editor->actual_file,
+	// 			u32string_into_ptr_const(&new_word),
+	// 			u32string_size(&new_word),
+	// 			1
+	// 		);
+
+	// 		u32string_free(&new_word);	
+	// 	}
+
+	// 	if (editor->debug_mode) {
+	// 		log_write(&editor->log, 
+	// 			"editor_delete_single_char: words now: %zu",
+	// 			trie_count(&editor->actual_file->words));
+	// 	}
+	// }
+
+	if (editor->config.use_autocomplete) {
+		editor_decrement_line_freq(
+			editor,
+			editor->cursor.pos.y
+		);
+	}
+
 	ret = file_delete_char(
 		&editor->actual_file->file, 
-		editor->cursor.pos,
-		&editor->result);
+		editor->cursor.pos);
 
 	if (ret < 0) {
 		return ret;
+	}
+
+	if (editor->config.use_autocomplete) {
+		editor_increment_line_freq(
+			editor,
+			editor->cursor.pos.y
+		);
 	}
 
 	editor_move_cursor_left(editor);
@@ -3238,13 +3451,9 @@ static int delete_single_char
 
 	Operation* last = stack_peek(&editor->actual_file->undo);
 
-	const struct language_rules* rules = (editor->actual_file->language)
-		? editor->actual_file->language->rules
-		: NULL;
-
 	stack_clear(&editor->actual_file->redo);
 
-	if (operation_can_merge(last, &op, rules)) {
+	if (operation_can_merge(last, &op, editor_get_IsWordChar(editor))) {
 		operation_merge(last, &op);
 	}
 
@@ -3268,6 +3477,18 @@ int delete_newline
 		&editor->actual_file->file,
 		editor->cursor.pos.y - 1);
 
+	if (editor->config.use_autocomplete) {
+		editor_decrement_line_freq(
+			editor,
+			editor->cursor.pos.y - 1
+		);
+
+		editor_decrement_line_freq(
+			editor,
+			editor->cursor.pos.y
+		);
+	}
+
 	ret = file_merge_lines(
 		&editor->actual_file->file, 
 		editor->cursor.pos,
@@ -3275,6 +3496,13 @@ int delete_newline
 
 	if (ret < 0) {
 		return ret;
+	}
+
+	if (editor->config.use_autocomplete) {
+		editor_increment_line_freq(
+			editor,
+			editor->cursor.pos.y - 1
+		);
 	}
 
 	editor_cursor_move(
@@ -3417,6 +3645,10 @@ void editor_del_from_cursor_left(Editor* editor) {
 	else {
 		editor_selection_clear(editor);
 	}
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, "editor_del_from_cursor_left: SUCCESS");
+	}
 }
 
 void editor_del_from_cursor_right(Editor* editor) {
@@ -3455,7 +3687,11 @@ void editor_del_from_cursor_right(Editor* editor) {
 
 	else {
 		editor_selection_clear(editor);
-	}	
+	}
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, "editor_del_from_cursor_right: SUCCESS");
+	}
 }
 
 
@@ -3467,7 +3703,7 @@ int editor_indent_line
 	size_t y
 )
 {
-	if (y >= file_num_lines(&editor->actual_file->file) - 1) {
+	if (y > file_num_lines(&editor->actual_file->file) - 1) {
 		return EIE_NOT_FATAL_ERROR;
 	}
 
@@ -3517,6 +3753,12 @@ int editor_indent_line
 	stack_clear(&editor->actual_file->redo);
 	stack_push(&editor->actual_file->undo, &op);
 
+	if (editor->debug_mode) {
+		log_write(&editor->log, 
+			"editor_indent_line: %zu indented",
+			editor->cursor.pos.y);
+	}
+
 	return ret;	
 }
 
@@ -3558,6 +3800,12 @@ static int indent_selection
 
 	stack_clear(&editor->actual_file->redo);
 	stack_push(&editor->actual_file->undo, &op);
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, 
+			"editor_indent_selection: start = %zu, end = %zu",
+			a.y, b.y);
+	}
 
 	return ret;
 }
@@ -3603,7 +3851,7 @@ int editor_unindent_line
 	size_t y
 )
 {
-	if (y >= file_num_lines(&editor->actual_file->file) - 1) {
+	if (y > file_num_lines(&editor->actual_file->file) - 1) {
 		return EIE_NOT_FATAL_ERROR;
 	}
 
@@ -3618,7 +3866,7 @@ int editor_unindent_line
 	size_t move_cursor = 0;
 
 	{
-		u32string* line = file_get_line_text(
+		const u32string* line = file_get_line_text_const(
 			&editor->actual_file->file, 
 			editor->cursor.pos.y);
 
@@ -3671,6 +3919,12 @@ int editor_unindent_line
 	stack_clear(&editor->actual_file->redo);
 	stack_push(&editor->actual_file->undo, &op);
 
+	if (editor->debug_mode) {
+		log_write(&editor->log, 
+			"editor_unindent_line: %zu unindented",
+			editor->cursor.pos.y);
+	}
+
 	return ret;
 }
 
@@ -3697,7 +3951,7 @@ static int unindent_selection
 		: 1;
 
 	{
-		u32string* line_text = file_get_line_text(
+		const u32string* line_text = file_get_line_text_const(
 			&editor->actual_file->file, 
 			editor->cursor.pos.y);
 
@@ -3730,6 +3984,12 @@ static int unindent_selection
 
 	stack_clear(&editor->actual_file->redo);
 	stack_push(&editor->actual_file->undo, &op);
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, 
+			"editor_unindent_selection: start = %zu, end = %zu",
+			a.y, b.y);
+	}
 
 	return ret;
 }
@@ -3771,6 +4031,8 @@ int editor_unindent_selection_or_line(Editor* editor) {
 
 /// --- COMMENT ---
 
+// for autocompleters: this function treats the comment
+// as not being a word :)
 int editor_comment_line_or_selection(Editor* editor) {
 	if (editor->actual_file->readonly) {
 		prompt_init(
@@ -3844,10 +4106,15 @@ int editor_comment_line_or_selection(Editor* editor) {
 			&editor->actual_file->file, 
 			editor->cursor.pos.y,
 			comment_fmt,
-			&move_cursor,
-			&editor->result);
+			&move_cursor);
 
 		start = end = editor->cursor.pos;
+
+		if (editor->debug_mode) {
+			log_write(&editor->log, 
+				"editor_comment_line: %zu line",
+				editor->cursor.pos.y);
+		}
 	}
 
 	else {
@@ -3863,6 +4130,12 @@ int editor_comment_line_or_selection(Editor* editor) {
 
 		start = a;
 		end = b;
+
+		if (editor->debug_mode) {
+			log_write(&editor->log, 
+				"editor_comment_selection: start = %zu, end = %zu",
+				a.y, b.y);
+		}
 	}
 
 	if (ret < 0) {
@@ -3899,6 +4172,9 @@ int editor_comment_line_or_selection(Editor* editor) {
 
 /// --- REPLACE ---
 
+// MAYBE: create a function that can be used by
+// replace_pattern and replace_within_selection
+
 // helper for editor_replace_pattern
 static void range_delete
 (
@@ -3909,11 +4185,17 @@ static void range_delete
 {
 	size_t pattern_size = u32string_size(pattern);
 
+	// resolving a BUG 😠: 13/08/26
+	int first = 1;
+	size_t first_line = 0;
+	size_t last_line = 0;
+
 	for (size_t i = 0; i < file_num_lines(&editor->actual_file->file); i++) {
 		Line* line = vector_get(&editor->actual_file->file.lines, i);
 
 		ssize_t index;
-		int first = 1;
+
+		int first_in_line = 1;
 
 		while ((index = u32string_find(
 				&line->text, 
@@ -3923,13 +4205,33 @@ static void range_delete
 		{
 			editor->sel.active = 0;
 
+			last_line = i;
+
 			if (first) {
-				line->dirty = 1;
+				first_line = i;
+				// resolving a BUG 😠: 13/08/26
+				// line->dirty = 1;
 				first = 0;
+			}
+
+			if (first_in_line) {
+				if (editor->config.use_autocomplete) {
+					editor_decrement_line_freq(
+						editor,
+						i
+					);
+				}
+			
+				first_in_line = 0;				
 			}
 
 			if (replacements) {
 				Position pos = (Position) { index, i };
+
+				if (editor->debug_mode) {
+					log_write(&editor->log, "found at: (%zu, %zu)",
+						index, i);
+				}
 
 				vector_push(replacements, &pos);
 			}
@@ -3940,7 +4242,25 @@ static void range_delete
 				index + pattern_size
 			);
 		}
-	}	
+
+		if (!first_in_line && editor->config.use_autocomplete) {
+			editor_increment_line_freq(
+				editor,
+				i
+			);
+		}
+	}
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, "");
+	}
+
+	// resolving a BUG 😠: 13/08/26
+	if (!first) {
+		for (size_t i = first_line; i <= last_line; i++) {
+			file_set_line_dirty(&editor->actual_file->file, i);
+		}
+	}
 }
 
 // helper for editor_replace_pattern
@@ -3955,14 +4275,18 @@ static void range_replace
 	size_t pattern_size = u32string_size(pattern);
 	size_t text_size = u32string_size(text);
 
-	log_write(&editor->log, "vai tomar nocu");
+	// resolving a BUG 😠: 13/08/26
+	int first = 1;
+	size_t first_line = 0;
+	size_t last_line = 0;
 
 	for (size_t i = 0; i < file_num_lines(&editor->actual_file->file); i++) {
 		Line* line = vector_get(&editor->actual_file->file.lines, i);
 
 		ssize_t index;
 		size_t pos = 0;
-		int first = 1;
+
+		int first_in_line = 1;
 
 		while ((index = u32string_find(
 				&line->text, 
@@ -3970,15 +4294,33 @@ static void range_replace
 				u32string_size(&line->text),
 				pattern)) >= 0)
 		{
+			last_line = i;
+
 			if (first) {
-				line->dirty = 1;
+				first_line = i;
+				// resolving a BUG 😠: 13/08/26
+				// line_text->dirty = 1;
 				first = 0;
+			}
+
+			if (first_in_line) {
+				if (editor->config.use_autocomplete) {
+					editor_decrement_line_freq(
+						editor,
+						i
+					);
+				}
+
+				first_in_line = 0;
 			}
 
 			if (replacements) {
 				Position pos = (Position) { index, i };
 
-				log_write(&editor->log, "(%zu, %zu)", index, i);
+				if (editor->debug_mode) {
+					log_write(&editor->log, "found at: (%zu, %zu)",
+						index, i);
+				}
 
 				vector_push(replacements, &pos);
 			}
@@ -3997,6 +4339,24 @@ static void range_replace
 			);
 
 			pos = index + text_size;
+		}
+
+		if (!first_in_line && editor->config.use_autocomplete) {
+			editor_increment_line_freq(
+				editor,
+				i
+			);
+		}
+	}
+
+	if (editor->debug_mode) {
+		log_write(&editor->log, "");
+	}
+
+	// resolving a BUG 😠: 13/08/26
+	if (!first) {
+		for (size_t i = first_line; i <= last_line; i++) {
+			file_set_line_dirty(&editor->actual_file->file, i);
 		}
 	}
 }
@@ -4026,6 +4386,10 @@ void editor_replace_pattern
 		return;
 	}
 
+	if (editor->debug_mode) {
+		log_write(&editor->log, "\neditor_replace_pattern:\n");
+	}
+
 	Vector replacements;
 	vector_init(&replacements, sizeof(Position), NULL);
 
@@ -4039,8 +4403,7 @@ void editor_replace_pattern
 
 	editor->actual_file->file.dirty = 1;
 
-	Position cursor_remove = editor->cursor.pos;
-	Position cursor_insert = editor->cursor.pos;
+	file_set_has_dirty_line(&editor->actual_file->file);
 
 	size_t pattern_size = u32string_size(pattern);
 	size_t text_size = u32string_size(text);
@@ -4049,6 +4412,17 @@ void editor_replace_pattern
 
 	if (editor->sel.active) {
 		editor->sel.end.x += offset;
+	}
+
+	Position cursor_remove = editor->cursor.pos;
+	Position cursor_insert = editor->cursor.pos;
+
+	if (offset < 0) {
+		cursor_remove.x += offset;
+	}
+
+	else {
+		cursor_insert.x += offset;
 	}
 
 	editor_cursor_move(
@@ -4079,11 +4453,16 @@ static void range_selection_delete
 
 	size_t pattern_size = u32string_size(pattern);
 
+	// resolving a BUG 😠: 13/08/26
+	int first = 1;
+	size_t first_line = 0;
+	size_t last_line = 0;
+
 	for (size_t i = a.y; i <= b.y; i++) {
 		Line* line = vector_get(&editor->actual_file->file.lines, i);
 
 		ssize_t index;
-		int first = 1;
+		int first_in_line = 1;
 
 		size_t find_from = 0;
 		size_t find_until = u32string_size(&line->text);
@@ -4118,9 +4497,24 @@ static void range_selection_delete
 		{
 			editor->sel.active = 0;
 
+			last_line = i;
+
 			if (first) {
-				line->dirty = 1;
+				first_line = i;
+				// resolving a BUG 😠: 13/08/26
+				// line->dirty = 1;
 				first = 0;
+			}
+
+			if (first_in_line) {
+				if (editor->config.use_autocomplete) {
+					editor_decrement_line_freq(
+						editor,
+						i
+					);
+				}
+
+				first_in_line = 0;
 			}
 
 			if (replacements) {
@@ -4134,6 +4528,21 @@ static void range_selection_delete
 				index,
 				index + pattern_size
 			);
+		}
+
+		if (!first_in_line && editor->config.use_autocomplete) {
+			editor_increment_line_freq(
+				editor,
+				i
+			);
+		}
+	}
+
+	// resolving a BUG 😠: 13/08/26
+
+	if (!first) {
+		for (size_t i = first_line; i <= last_line; i++) {
+			file_set_line_dirty(&editor->actual_file->file, i);
 		}
 	}
 }
@@ -4152,12 +4561,17 @@ static void range_selection_replace
 	size_t pattern_size = u32string_size(pattern);
 	size_t text_size = u32string_size(text);
 
+	// resolving a BUG 😠: 13/08/26
+	int first = 1;
+	size_t first_line = 0;
+	size_t last_line = 0;
+
 	for (size_t i = a.y; i <= b.y; i++) {
 		Line* line = vector_get(&editor->actual_file->file.lines, i);
 
 		ssize_t index;
 		size_t pos = 0;
-		int first = 1;
+		int first_in_line = 1;
 
 		size_t find_until = u32string_size(&line->text);
 
@@ -4187,9 +4601,24 @@ static void range_selection_replace
 				find_until,
 				pattern)) >= 0)
 		{
+			last_line = i;
+
 			if (first) {
-				line->dirty = 1;
+				first_line = i;
+				// resolving a BUG 😠: 13/08/26
+				// line->dirty = 1;
 				first = 0;
+			}
+
+			if (first_in_line) {
+				if (editor->config.use_autocomplete) {
+					editor_decrement_line_freq(
+						editor,
+						i
+					);
+				}
+
+				first_in_line = 0;				
 			}
 
 			if (replacements) {
@@ -4215,8 +4644,21 @@ static void range_selection_replace
 
 			pos = index + text_size;
 		}
+
+		if (!first_in_line && editor->config.use_autocomplete) {
+			editor_increment_line_freq(
+				editor,
+				i
+			);
+		}
 	}
 
+	// resolving a BUG 😠: 13/08/26
+	if (!first) {
+		for (size_t i = first_line; i <= last_line; i++) {
+			file_set_line_dirty(&editor->actual_file->file, i);
+		}
+	}
 }
 
 void editor_replace_within_selection
@@ -4256,13 +4698,23 @@ void editor_replace_within_selection
 
 	editor->actual_file->file.dirty = 1;
 
-	Position cursor_remove = editor->cursor.pos;
-	Position cursor_insert = editor->cursor.pos;
+	file_set_has_dirty_line(&editor->actual_file->file);
 
 	size_t pattern_size = u32string_size(pattern);
 	size_t text_size = u32string_size(text);
 
 	ssize_t offset = text_size - pattern_size;
+
+	Position cursor_remove = editor->cursor.pos;
+	Position cursor_insert = editor->cursor.pos;
+
+	if (offset < 0) {
+		cursor_remove.x += offset;
+	}
+
+	else {
+		cursor_insert.x += offset;
+	}
 
 	if (editor->sel.active) {
 		if (selection_start_before_end(&editor->sel)) {
@@ -4383,8 +4835,6 @@ static int move_selection_up
 	Position cursor_remove = editor->cursor.pos;
 	Position start = a;
 	Position end = b;
-
-	log_write(&editor->log, "%zu, %zu", start.y, end.y);
 
 	MoveDirection direction = LINEMOVE_UP;
 
@@ -4597,7 +5047,7 @@ static int find_from_range
 	size_t pattern_size = u32string_size(pattern);
 
 	for (size_t i = start.y; i <= end.y; i++) {
-		u32string* line_text = file_get_line_text(
+		const u32string* line_text = file_get_line_text_const(
 			&editor->actual_file->file, 
 			i);
 
@@ -4627,6 +5077,12 @@ static int find_from_range
 			editor_cursor_move(
 				editor,
 				(Position) { end, y } );
+
+			if (editor->debug_mode) {
+				log_write(&editor->log, 
+					"editor_find_next_pattern_match: found at (%zu, %zu)",
+					end, y);
+			}
 
 			if (select_if_find) {
 				editor->selecting = 0;
@@ -4803,7 +5259,7 @@ static int find_for_open_delimiter
 	int has_lexer = (editor->actual_file->lexer != NULL);
 
 	for (size_t y = start.y + 1; y-- > 0;) {
-		const u32string* line = file_get_line_text(
+		const u32string* line = file_get_line_text_const(
 			&editor->actual_file->file,
 			y
 		);
@@ -4852,6 +5308,12 @@ static int find_for_open_delimiter
 					(Position) { x + 1, y }
 				);
 
+				if (editor->debug_mode) {
+					log_write(&editor->log,
+					"find_for_open_delimiter: found at "
+					"(%zu, %zu)", x, y);	
+				}
+
 				return 1;
 			}
 		}
@@ -4882,7 +5344,7 @@ static int find_for_close_delimiter
 			);			
 		}
 
-		const u32string* line = file_get_line_text(
+		const u32string* line = file_get_line_text_const(
 			&editor->actual_file->file,
 			y
 		);
@@ -4916,6 +5378,12 @@ static int find_for_close_delimiter
 					(Position) { x, y }
 				);
 
+				if (editor->debug_mode) {
+					log_write(&editor->log,
+					"find_for_close_delimiter: found at "
+					"(%zu, %zu)", x, y);	
+				}
+
 				return 1;
 			}
 		}
@@ -4935,7 +5403,7 @@ static int find_actual_block
 {
 	size_t lines = file_num_lines(&editor->actual_file->file);
 
-	char open, close;
+	char open = '\0', close = '\0';
 	int has_lexer = (editor->actual_file->lexer != NULL);
 
 	size_t depth = 1;
@@ -4950,7 +5418,7 @@ static int find_actual_block
 			);
 		}
 
-		const u32string* line = file_get_line_text(
+		const u32string* line = file_get_line_text_const(
 			&editor->actual_file->file,
 			y
 		);
@@ -5149,7 +5617,7 @@ int editor_find_actual_block(Editor* editor) {
 	int pos_x_equals_size = 0;
 
 	{
-		const u32string* line = file_get_line_text(
+		const u32string* line = file_get_line_text_const(
 			&editor->actual_file->file,
 			pos.y
 		);
@@ -5250,8 +5718,10 @@ void editor_match(Editor* editor) {
 			return;
 		}
 
-		u32string* line = file_get_line_text(&editor->actual_file->file,
-			editor->sel.start.y);
+		const u32string* line = file_get_line_text_const(
+			&editor->actual_file->file,
+			editor->sel.start.y
+		);
 
 		u32string pattern = u32string_slice(
 			line, 
@@ -5269,7 +5739,9 @@ void editor_match(Editor* editor) {
 		}
 
 		u32string_free(&pattern);
-	} else {
+	} 
+
+	else {
 		editor_select_word(editor);
 	}	
 }
@@ -5371,6 +5843,11 @@ void editor_undo(Editor* editor) {
 	default:
 		break;
 	}
+
+	if (editor->debug_mode) {
+		log_write(&editor->log,
+			"editor_undo: type %d", op.type);
+	}
 }
 
 void editor_redo(Editor* editor) {
@@ -5465,5 +5942,10 @@ void editor_redo(Editor* editor) {
 
 	default:
 		break;
+	}
+
+	if (editor->debug_mode) {
+		log_write(&editor->log,
+			"editor_redo: type %d", op.type);
 	}
 }

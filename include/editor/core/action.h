@@ -5,8 +5,6 @@
 #include "editor/core/history.h"
 
 
-typedef int (*WordFinder)(uint32_t c);
-
 int is_alnum(uint32_t c);
 int is_word_char(uint32_t c);
 
@@ -22,7 +20,7 @@ void editor_cursor_move(Editor* editor, Position pos);
 void editor_change_actual_file(Editor* editor,size_t index);
 void editor_change_next_file(Editor* editor);
 void editor_change_prev_file(Editor* editor);
-void editor_create_new_file(Editor* editor);
+void editor_create_new_file(Editor* editor, int readonly);
 
 int editor_create_internal_file
 (
@@ -38,7 +36,8 @@ void editor_open_file
 	int readonly
 );
 
-void editor_close_file(Editor* editor);
+void editor_close_file_forced(Editor* editor, size_t index);
+void editor_close_file(Editor* editor, size_t index);
 
 void editor_handle_deleted(Editor* editor);
 void editor_handle_moved_from(Editor* editor);
@@ -47,7 +46,7 @@ void editor_handle_modified(Editor* editor);
 void editor_handle_attrib_changed(Editor* editor);
 
 
-int editor_save_file(Editor* editor);
+int editor_save_file(Editor* editor, size_t index);
 int editor_quit(Editor* editor);
 
 
@@ -68,7 +67,6 @@ void editor_move_cursor_left(Editor* editor);
 void editor_move_cursor_up(Editor* editor);
 void editor_move_cursor_down(Editor* editor);
 void editor_move_cursor_beginning_line(Editor* editor);
-void editor_move_cursor_indent_line(Editor* editor);
 void editor_move_cursor_end_line(Editor* editor);
 
 
@@ -80,17 +78,8 @@ void editor_scroll_up_terminal_size(Editor* editor);
 void editor_scroll_down_terminal_size(Editor* editor);
 
 
-void editor_move_between_words_right
-(
-	Editor* editor,
-	WordFinder finder
-);
-
-void editor_move_between_words_left
-(
-	Editor* editor,
-	WordFinder finder
-);
+void editor_move_between_words_right(Editor* editor, int fullword);
+void editor_move_between_words_left(Editor* editor, int fullword);
 
 
 void editor_operation_insert(Editor* editor, const Operation* op);

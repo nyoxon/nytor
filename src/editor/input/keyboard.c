@@ -34,7 +34,6 @@ static void editor_handle_goto
 
 int editor_open_cmd(Editor* editor, struct normal_key key);
 
-
 // --- MAIN FUNCTION ---
 
 int editor_handle_normal_input(Editor* editor, struct normal_key key) {
@@ -89,6 +88,10 @@ int editor_handle_normal_input(Editor* editor, struct normal_key key) {
 		return 0;
 	}
 
+	if (normal_key_equal(&key, &editor->config.keybinds[ACTION_QUIT_FORCED])) {
+		return 0;
+	}
+
 	if (normal_key_equal(&key, &editor->config.keybinds[ACTION_GOTO])) {
 		prompt_init(&editor->status_bar, PROMPT_GOTO, PT_INTERACTIVE);
 		return 1;		
@@ -107,11 +110,6 @@ int editor_handle_normal_input(Editor* editor, struct normal_key key) {
 	if (normal_key_equal(&key, &editor->config.keybinds[ACTION_MOVE_START_LINE])) 
 	{
 		editor_move_cursor_beginning_line(editor);
-		return 1;
-	}
-
-	if (normal_key_equal(&key, &editor->config.keybinds[ACTION_MOVE_INDENT])) {
-		editor_move_cursor_indent_line(editor);
 		return 1;
 	}
 
@@ -194,9 +192,19 @@ int editor_handle_normal_input(Editor* editor, struct normal_key key) {
 			}
 
 			return 1;
-		} 
+		}
 
 		else {
+			int proceed = 1;
+
+			if (editor->config.use_autocomplete) {
+				proceed = editor_autocomp_word(editor);				
+			}
+
+			if (proceed == 0) {
+				return 1;
+			}
+
 			ret = editor_insert_tab(editor);
 			
 			if (ret == EIE_FATAL_ERROR) {
@@ -253,7 +261,7 @@ int editor_handle_normal_input(Editor* editor, struct normal_key key) {
 	}
 
 	if (normal_key_equal(&key, &editor->config.keybinds[ACTION_SAVE])) {
-		ret = editor_save_file(editor);
+		ret = editor_save_file(editor, editor->actual_file_index);
 
 		if (ret == EIE_FATAL_ERROR) {
 			return 0;
@@ -349,13 +357,13 @@ int editor_handle_normal_input(Editor* editor, struct normal_key key) {
 	}
 
 	if (normal_key_equal(&key, &editor->config.keybinds[ACTION_MOVE_WORD_RIGHT])) {
-		editor_move_between_words_right(editor, is_alnum);
+		editor_move_between_words_right(editor, 0);
 		return 1;
 	}
 
 	if (normal_key_equal(&key, &editor->config.keybinds[ACTION_MOVE_FULLWORD_RIGHT])) 
 	{
-		editor_move_between_words_right(editor, is_word_char);
+		editor_move_between_words_right(editor, 1);
 		return 1;
 	}
 
@@ -365,13 +373,13 @@ int editor_handle_normal_input(Editor* editor, struct normal_key key) {
 	}
 
 	if (normal_key_equal(&key, &editor->config.keybinds[ACTION_MOVE_WORD_LEFT])) {
-		editor_move_between_words_left(editor, is_alnum);
+		editor_move_between_words_left(editor, 0);
 		return 1;
 	}
 
 	if (normal_key_equal(&key, &editor->config.keybinds[ACTION_MOVE_FULLWORD_LEFT])) 
 	{
-		editor_move_between_words_left(editor, is_word_char);
+		editor_move_between_words_left(editor, 1);
 		return 1;
 	}
 
@@ -417,12 +425,17 @@ int editor_handle_normal_input(Editor* editor, struct normal_key key) {
 	}
 
 	if (normal_key_equal(&key, &editor->config.keybinds[ACTION_NEW_FILE])) {
-		editor_create_new_file(editor);
+		editor_create_new_file(editor, 0);
 		return 1;
 	}
 
 	if (normal_key_equal(&key, &editor->config.keybinds[ACTION_CLOSE_FILE])) {
-		editor_close_file(editor);
+		editor_close_file(editor, editor->actual_file_index);
+		return 1;
+	}
+
+	if (normal_key_equal(&key, &editor->config.keybinds[ACTION_CLOSE_FILE_FORCED])) {
+		editor_close_file_forced(editor, editor->actual_file_index);
 		return 1;
 	}
 
@@ -474,11 +487,25 @@ static int editor_handle_open_delimiters(Editor* editor, uint32_t key) {
 	const struct language_rules* rules = (editor->actual_file->language) ?
 		editor->actual_file->language->rules : NULL;
 
+	if (editor->config.use_autocomplete) {
+		editor_decrement_line_freq(
+			editor,
+			editor->cursor.pos.y
+		);
+	}
+
 	if (!rules) {
 		int ret = editor_insert_char(editor, key);
 
 		if (ret < 0) {
 			return ret;
+		}
+
+		if (editor->config.use_autocomplete) {
+			editor_increment_line_freq(
+				editor,
+				editor->cursor.pos.y
+			);
 		}
 
 		if (editor->debug_mode) {
@@ -508,7 +535,15 @@ static int editor_handle_open_delimiters(Editor* editor, uint32_t key) {
 	u32string_insert(line_text, open, editor->cursor.pos.x);
 	u32string_insert(line_text, close, editor->cursor.pos.x + 1);
 
+	if (editor->config.use_autocomplete) {
+		editor_increment_line_freq(
+			editor,
+			editor->cursor.pos.y
+		);
+	}
+
 	file_set_line_dirty(&editor->actual_file->file, editor->cursor.pos.y);
+	file_set_has_dirty_line(&editor->actual_file->file);
 
 	editor_cursor_move(
 		editor,
@@ -557,8 +592,24 @@ static int editor_handle_close_delimiters
 		u32string_char(line, editor->cursor.pos.x) == key) 
 	{
 		editor_move_cursor_right(editor);
-	} else {
+	}
+
+	else {
+		if (editor->config.use_autocomplete) {
+			editor_decrement_line_freq(
+				editor,
+				editor->cursor.pos.y
+			);
+		}
+
 		int ret = editor_insert_char(editor, key);
+
+		if (editor->config.use_autocomplete) {
+			editor_increment_line_freq(
+				editor,
+				editor->cursor.pos.y
+			);
+		}
 
 		if (ret < 0) {
 			return ret;
@@ -1000,138 +1051,6 @@ static void editor_handle_replace_pattern
 	}
 }
 
-static size_t get_start_of_last_space
-(
-	const u32string* buf,
-	uint32_t* last_space,
-	u32string* last_segment // out
-) 
-{
-	size_t buf_size = u32string_size(buf);
-
-	size_t size = buf_size - (
-		last_space - u32string_into_ptr_const(buf));
-
-	if (last_segment) {
-		*last_segment = u32string_from_raw_copy(
-			last_space,
-			size
-		);
-	}
-
-	return last_space - u32string_into_ptr_const(buf);
-}
-
-static WindowResult on_select_fill_prompt(void* userdata) {
-	assert(userdata != NULL);
-
-	Editor* editor = userdata;
-
-	u32string* buf = &editor->status_bar.buf;
-	uint32_t* space = u32string_chr(buf, U' ');
-	const Vector* candidates = &editor->window.content;
-
-	size_t start;
-	AutoCompType type;
-
-	if (!space) {
-		start = 0;
-		type = AUTOCOMP_CMD;
-	}
-
-	else {
-		uint32_t* last_space = u32string_rchr(
-			&editor->status_bar.buf, 
-			U' '
-		);
-
-		last_space++;
-
-		start = get_start_of_last_space(buf, last_space, NULL);
-		type = AUTOCOMP_FILE;
-	}
-
-	size_t buf_size = u32string_size(buf);
-
-	const u32string* selected = vector_get_const(
-		candidates,
-		editor->window.cursor.pos.y
-	);
-
-	u32string_remove_range(
-		buf,
-		start,
-		buf_size
-	);
-
-	u32string_insert_range_raw(
-		buf,
-		start,
-		u32string_into_ptr_const(selected),
-		u32string_size(selected)
-	);
-
-	/// FIXME (temporary assert)
-	assert(u32string_size(selected) >= (buf_size - start));
-
-	editor->status_bar.cursor.pos.x += u32string_size(selected) -
-		(buf_size - start);
-
-	uint32_t additional_char;
-
-	if (type == AUTOCOMP_FILE) {
-		char* name = u32string_into_u8(selected);
-
-		if (isdir(name)) {
-			additional_char = U'/';
-		}
-
-		else {
-			additional_char = U' ';
-		}
-
-		free(name);
-	}
-
-	else {
-		additional_char = U' ';
-	}
-
-	u32string_push(buf, additional_char);
-	editor->status_bar.cursor.pos.x += 1;
-
-	return WINDOW_CLOSE;
-}
-
-static void editor_create_window_candidates
-(
-	Editor* editor,
-	Vector candidates
-)
-{
-	WindowOptions options = {
-		.pos_type = WINDOWPOS_CUSTOM,
-		.sw = 0.2,
-		.sh = 0.5,
-		.tab_size = editor->config.tab_size,
-		.tsize = editor->tsize,
-		.on_select = on_select_fill_prompt
-	};
-
-	Position pos = (Position) {
-		u32string_size(&editor->status_bar.label) + 
-			u32string_size(&editor->status_bar.buf),
-
-		options.tsize.rows - (options.tsize.rows * options.sh) - 2
-	};
-
-	options.pos = pos;
-
-	editor->window = window_new(&options);
-	editor->window.content = candidates;
-	editor->has_window = 1;
-}
-
 int editor_open_cmd(Editor* editor, struct normal_key key) {
 	if ((key.content == U'\n' || key.content == U'\r')) {
 		if (u32string_is_empty(&editor->status_bar.buf)) {
@@ -1166,46 +1085,7 @@ int editor_open_cmd(Editor* editor, struct normal_key key) {
 	}
 
 	else if (key.content == U'\t') {
-		const u32string* buf = &editor->status_bar.buf;
-
-		uint32_t* space = u32string_chr(buf, U' ');
-
-		AutoCompResult result;
-
-		if (!space) {
-			u32string buf_cloned = u32string_clone(buf);
-
-			result = autocomp_cmd(&buf_cloned, &editor->status_bar);
-			u32string_free(&buf_cloned);
-		}
-
-		else {
-			uint32_t* last_space =
-				u32string_rchr(buf, U' ');
-
-			if (last_space) {
-				last_space++;
-
-				u32string last_segment;
-
-				size_t start = get_start_of_last_space(
-					buf,
-					last_space,
-					&last_segment
-				);
-
-				result = autocomp_file(
-					&last_segment, 
-					&editor->status_bar,
-					start);
-
-				u32string_free(&last_segment);
-			}
-		}
-
-		if (result.type == AUTOCOMP_RESULT_SHOW_CANDIDATES) {
-			editor_create_window_candidates(editor, result.candidates);
-		}
+		editor_autocomp_prompt(editor);
 	} 
 
 	else {

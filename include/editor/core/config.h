@@ -26,6 +26,8 @@ struct config {
 	int left_click_end_selection;
 	int auto_save_quit;
 	int background_fills_all;
+	int use_autocomplete;
+	int select_line_selects_next;
 	// int soft_wrap; // maybe someday
 
 	int has_background;
@@ -37,6 +39,8 @@ struct config {
 
 void config_default(struct config* config);
 int config_load(struct config* config);
+
+int config_load_specific_theme(struct config* config, const char* theme);
 
 void config_check_equal_keybinds
 (

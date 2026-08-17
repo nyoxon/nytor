@@ -22,7 +22,7 @@ const char PROMPT_READONLY[] = "operation denied: read only";
 const char PROMPT_INVALID_ARG[] = "operation denied: invalid argument";
 const char PROMPT_NO_ARGS[] = "operation denied: no arguments";
 const char PROMPT_FILE_EXISTS[] = "operation denied: file already exists";
-const char PROMPT_FILE_DNT_EXIST[] = "operation denied: filename doesn't exist";
+const char PROMPT_FILE_DNT_EXIST[] = "operation denied: file doesn't exist";
 const char PROMPT_INVALID_COMMAND[] = "operation denied: invalid command";
 const char PROMPT_OUT_OF_BOUNDS[] = "operation denied: index out of bounds";
 const char PROMPT_INSUFFICIENT_ARGS[] = "operation denied: insufficient arguments";
@@ -35,6 +35,17 @@ const char PROMPT_MULTILINE_ON_MATCH[] = "operation denied: the selection must n
 const char PROMPT_EMPTY_ON_MATCH[] = "operation denied: empty selection";
 const char PROMPT_ARG_TOO_LONG[] = "operation denied: argument is too long";
 const char PROMPT_INVALID_LANGUAGE[] = "operation denied: there is no language plugin associated";
+const char PROMPT_FILE_MODIFIED[] = "warning: file has been modified externally";
+const char PROMPT_FILE_DELETED[] = "warning: file has been deleted externally";
+const char PROMPT_FILE_ATTRIB_CHANGED[] = "warning: file permissions have changed";
+const char PROMPT_FILE_MOVED_FROM[] = "warning: file has been moved or renamed externally";
+const char PROMPT_FILE_UNTITLED[] = "operation denied: file is untitled, use saveas";
+const char PROMPT_HAS_EQUAL_FILE[] = "warning: a different file with the same name has been found";
+const char PROMPT_FILE_EXISTS_INTERNALLY[] = "operation denied: file is already open";
+const char PROMPT_UNSAVED_CHANGES[] = "changes haven't been saved, what do you wanna do?";
+const char PROMPT_SAVE_BEFORE_EXIT[] = "save before exit?";
+const char PROMPT_FILE_UNSAVED_CHANGES[] = "operation denied: changes haven't been saved";
+
 
 Prompt prompt_new(TerminalSize tsize) {
 	Prompt pt;
@@ -131,7 +142,7 @@ static void prompt_move_screen_cursor(const Prompt* pt) {
 
 	Position screen_cursor = (Position) {
 		cursor_screen_x - pt->view.col_offset,
-		pt->tsize.rows + 1		
+		pt->tsize.rows + 1
 	};
 
 	move_terminal_cursor(screen_cursor.x, screen_cursor.y);
@@ -210,7 +221,12 @@ void prompt_drawn
 		);
 
 		if (remaining <= 0) {
-			goto end;
+			if (pt->type == PT_INTERACTIVE) {
+				prompt_move_screen_cursor(pt);
+			}
+
+			reset_color();
+			return;
 		}
 
 		size_t start_buf = (start > label_size)
@@ -238,11 +254,11 @@ void prompt_drawn
 		remaining = 0;
 	}
 
-	for (size_t i = 0; i < (size_t) remaining + 1; i++) {
-		u32_print(U' ');
-	}
+	char buf[remaining + 1];
+	memset(buf, ' ', remaining + 1);
 
-end:
+	write(STDOUT_FILENO, buf, remaining + 1);
+
 	if (pt->type == PT_INTERACTIVE) {
 		prompt_move_screen_cursor(pt);
 	}
@@ -374,7 +390,7 @@ int prompt_buf_to_u8string(const Prompt* pt, char** string) {
 	}
 }
 
-static void prompt_cursor_update(Prompt* pt) {
+void prompt_cursor_update(Prompt* pt) {
 	size_t text_cols = pt->tsize.cols;
 
 	while (prompt_cursor_screen_x(pt) >= 
@@ -383,7 +399,7 @@ static void prompt_cursor_update(Prompt* pt) {
 		pt->view.col_offset += text_cols - 4;
 	}
 
-	while (prompt_cursor_screen_x(pt)  < pt->view.col_offset) {
+	while (prompt_cursor_screen_x(pt) < pt->view.col_offset) {
 		if (pt->view.col_offset >= text_cols) {
 			pt->view.col_offset -= text_cols
 				- 4;

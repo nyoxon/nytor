@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <assert.h>
+#include <ctype.h>
 
 #include "editor/core/editor_file.h"
 #include "editor/core/history.h"
@@ -24,51 +25,102 @@ static ssize_t check_has_reserved_filename
 	const Vector* lang_plugins_data
 );
 
-void editor_file_set_watcher
-(
-	EditorFile* ef, 
-	const char* filename,
-	int inotify_fd
-);
+EditorFile editor_file_prototype(const EditorFileOptions* options) {
+	assert(options != NULL);
 
-void editor_file_update_metadata(EditorFile* ef);
+	EditorFile ef;
+
+	ef.type = EDITOR_FILE_PROTOTYPE;
+	ef.proto_data = (EditorFilePrototypeData) { *options };
+
+	return ef;
+}
 
 int editor_file_open
 (
-	EditorFile* ef,
-	const EditorFileOptions* options,
+	EditorFile* ef, // a prototype
 	const Vector* lang_plugins_data,
 	Result* result
 ) 
 {
-	size_t tab_size = options->default_tab_size;
+	// you must check the type before calling this function
+	assert(ef->type == EDITOR_FILE_PROTOTYPE);
+
+	EditorFileOptions options = ef->proto_data.options;
+
+	const char* filename = options.filename;
+	size_t tab_size = options.default_tab_size;
+	int use_spaces = options.default_use_spaces;
+	int readonly = options.readonly;
+	int inotify_fd = options.inotify_fd;
+	int use_autocomplete = options.use_autocomplete;
 
 	ef->lexer = NULL;
 	ef->language = NULL;
 	ef->tokenized = 0;
 
+
+
+	/// --- LOAD PLUGINS ---
 	editor_file_set_lang_plugin(
 		ef,
-		options->filename,
+		filename,
 		lang_plugins_data);
+
+
+
+	/// --- AUTOCOMPLETE ---
+	Trie* trie = NULL;
+
+	if (use_autocomplete && !readonly) {
+		trie = &ef->words;
+
+		trie->root = trie_node_create();
+	}
+
+	else {
+		ef->words.root = NULL;
+	}
+
+	IsWordChar is_word_char = is_utf_word_char;
+
+	if (use_autocomplete &&
+		ef->language && 
+		ef->language->rules &&
+		ef->language->rules->is_word_char)
+	{
+		is_word_char = ef->language->rules->is_word_char;
+	}
+
+
+
+	/// --- FILE_OPEN ---
+	FileOptions foptions = {
+		.filename = filename,
+		.use_spaces = use_spaces,
+		.tab_size = tab_size,
+		.trie = trie,
+		.is_word_char = is_word_char
+	};
 
 	if (file_open(
 		&ef->file,
-		options->filename,
-		tab_size,
-		options->default_use_spaces,
+		&foptions,
 		result) < 0)
 	{
 		return -1;
 	}
 
-	if (options->filename != NULL) {
+
+
+	/// --- INOTIFY ---
+	if (filename != NULL) {
 		editor_file_set_watcher(
 			ef, 
-			options->filename, 
-			options->inotify_fd);
+			filename, 
+			inotify_fd);
 
-		int exists = file_exists(options->filename);
+		int exists = file_exists(filename);
 
 		if (exists) {
 			editor_file_update_metadata(ef);
@@ -92,8 +144,11 @@ int editor_file_open
 		ef->metadata = (FileMetadata) {0};
 	}
 
-	if (options->filename && !ef->file.dirty) {
-		int fd = open(options->filename, O_RDWR);
+
+
+	/// --- UNDO/REDO STACKS ---
+	if (filename && !ef->file.dirty) {
+		int fd = open(filename, O_RDWR);
 		size_t capacity;
 
 		if (fd == -1) {
@@ -102,9 +157,9 @@ int editor_file_open
 		}
 
 		else {
-			ef->readonly = options->readonly;
+			ef->readonly = readonly;
 
-			if (options->readonly) {
+			if (readonly) {
 				capacity = 0;
 			}
 
@@ -127,7 +182,7 @@ int editor_file_open
 	}
 
 	else {
-		ef->readonly = options->readonly;
+		ef->readonly = readonly;
 		size_t capacity = (ef->readonly)
 			? 0
 			: HISTORY_CAPACITY;
@@ -145,7 +200,12 @@ int editor_file_open
 			vector_operation_destroy);		
 	}
 
+
+	/// --- OTHER INIT ---
+	ef->type = EDITOR_FILE_LOADED;
+
 	ef->cursor = (Cursor) { POS_ZERO, 0 };
+	ef->view = (View) { 0, 0 };
 
 	ef->replace_pattern = u32string_new();
 	ef->replace_text = u32string_new();
@@ -160,6 +220,10 @@ int editor_file_open
 }
 
 void editor_file_free(EditorFile* ef) {
+	if (!ef || ef->type == EDITOR_FILE_PROTOTYPE) {
+		return;
+	}
+
 	file_free(&ef->file);
 	stack_free(&ef->undo);
 	stack_free(&ef->redo);
@@ -168,6 +232,8 @@ void editor_file_free(EditorFile* ef) {
 		u32string_free(&ef->replace_text);
 		u32string_free(&ef->replace_pattern);
 	}
+
+	trie_free(&ef->words);
 }
 
 static ssize_t check_has_extension
@@ -239,6 +305,8 @@ void editor_file_set_lang_plugin
 			ef->lexer = data->lexer;
 			ef->language = data->language;
 
+			file_set_has_dirty_line(&ef->file);
+
 			return;
 		}
 
@@ -254,6 +322,8 @@ void editor_file_set_lang_plugin
 
 			ef->lexer = data->lexer;
 			ef->language = data->language;
+
+			file_set_has_dirty_line(&ef->file);
 
 			return;
 		}		
@@ -279,6 +349,9 @@ int editor_file_change_lang
 			{
 				ef->language = data->language;
 				ef->lexer = data->lexer;
+
+				file_set_has_dirty_line(&ef->file);
+				file_set_all_lines_dirty(&ef->file);
 
 				return 0;
 			}
@@ -317,7 +390,8 @@ void editor_file_set_watcher
 		IN_MOVED_FROM |		// someone did "mv actual_file somewhere"
 		IN_CLOSE_WRITE |	// the file was modified
 		IN_DELETE |			// the file was deleted
-		IN_ATTRIB			// the rx permissions were changed
+		IN_ATTRIB |			// the rx permissions were changed
+		IN_MODIFY
 	);
 
 	free(absolute);
@@ -403,7 +477,36 @@ void handle_file_moved_into(EditorFile* ef) {
 }
 
 void handle_file_attrib_changed(EditorFile* ef) {
-	ef->externally_attrib_changed = 1;
+	if (ef->readonly) {
+		int fd = open(ef->file.filename, O_RDONLY);
+
+		if (fd < 0) {
+			ef->externally_attrib_changed = 1;
+		}
+
+		close(fd);
+	}
+
+	else {
+		int fd = open(ef->file.filename, O_RDONLY);
+
+		if (fd < 0) {
+			ef->readonly = 1;
+			ef->externally_attrib_changed = 1;
+
+			return;
+		}
+
+		close(fd);
+
+		fd = open(ef->file.filename, O_WRONLY);
+
+		if (fd < 0) {
+			ef->externally_attrib_changed = 1;
+		}
+
+		close(fd);
+	}
 }
 
 void handle_file_create(EditorFile* ef, int inotify_fd) {
@@ -418,7 +521,13 @@ void handle_file_create(EditorFile* ef, int inotify_fd) {
 	}
 }
 
-void editor_file_sync(EditorFile* ef) {
+void editor_file_sync
+(
+	EditorFile* ef,
+	int use_autocomplete,
+	Result* result
+) 
+{
 	ef->new_file = 0;
 
 	ef->cursor = (Cursor) { POS_ZERO, 0 };
@@ -426,12 +535,32 @@ void editor_file_sync(EditorFile* ef) {
 	stack_clear(&ef->undo);
 	stack_clear(&ef->redo);
 
+	if (use_autocomplete && !ef->readonly) {
+		trie_free(&ef->words);
+		ef->words.root = trie_node_create();
+	}
+
 	if (ef->replace) {
 		u32string_free(&ef->replace_text);
 		u32string_free(&ef->replace_pattern);
 	}
 
-	file_sync(&ef->file);
+	IsWordChar is_word_char = 
+		(ef->language && 
+			ef->language->rules && 
+			ef->language->rules->is_word_char)
+				? ef->language->rules->is_word_char
+				: is_utf_word_char;
+
+	Trie* trie = (use_autocomplete && !ef->readonly)
+		? &ef->words
+		: NULL;
+
+	file_sync(
+		&ef->file, 
+		trie,
+		is_word_char, 
+		result);
 
 	editor_file_update_metadata(ef);
 
@@ -524,3 +653,27 @@ end:
 
 	return 0;
 }
+
+
+/// --- AUTOCOMP TRIE ---
+void editor_file_update_word_frequency
+(
+	EditorFile* ef,
+	const uint32_t* word,
+	size_t size,
+	int increment
+)
+{
+	if (size == 0 || !ef->words.root) {
+		return;
+	}
+
+	if (increment > 0) {
+		trie_insert(&ef->words, word, size);
+	}
+
+	else if (increment < 0) {
+		trie_remove(&ef->words, word, size);
+	}
+}
+

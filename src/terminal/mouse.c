@@ -61,8 +61,6 @@ void mouse_get_event() {
 				}
 
 				buf[i] = '\0';
-
-				printf("mouse: %s\n", buf);
 			}
 		}
 	}

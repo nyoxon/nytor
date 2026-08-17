@@ -4,7 +4,7 @@ void line_init(Line* line) {
 	line->text = u32string_new();
 	vector_init(&line->tokens, sizeof(struct token), NULL);
 
-	line->dirty = 0;
+	line->dirty = 1;
 
 	line->state_in = LEX_STATE_NORMAL;
 	line->state_out = LEX_STATE_NORMAL;
@@ -15,6 +15,8 @@ void line_free(Line* line) {
 	vector_free(&line->tokens);
 
 	line->dirty = 0;
+	line->state_in = LEX_STATE_NORMAL;
+	line->state_out = LEX_STATE_NORMAL;
 }
 
 Line line_new() {
@@ -42,6 +44,7 @@ size_t line_tokens_size(const Line* line) {
 
 void line_tokenize(Line* line, struct lexer* lexer) {
 	if (u32string_is_empty(&line->text)) {
+		line->dirty = 0;
 		return;
 	}
 
@@ -66,5 +69,5 @@ void line_tokenize(Line* line, struct lexer* lexer) {
 
 	vector_free(&line->tokens);
 	line->tokens = line_tokens;
-	line->dirty = 0;
+	line->dirty = 0;		// important
 }

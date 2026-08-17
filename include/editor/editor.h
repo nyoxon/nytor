@@ -101,4 +101,20 @@ void editor_clamp_cursor_to_view(Editor* editor);
 
 size_t get_gutter_width(size_t line_count);
 
+const struct language_plugin* editor_get_language(Editor* editor);
+const struct language_rules* editor_get_rules(Editor* editor);
+const struct lexer* editor_get_lexer(Editor* editor);
+IsWordChar editor_get_IsWordChar(Editor* editor);
+
+void editor_update_word_frequency
+(
+	Editor* editor,
+	const uint32_t* word,
+	size_t size,
+	ssize_t increment
+);
+
+void editor_increment_line_freq(Editor* editor, size_t y);
+void editor_decrement_line_freq(Editor* editor, size_t y);
+
 #endif

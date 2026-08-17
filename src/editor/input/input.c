@@ -1,8 +1,17 @@
+#include <assert.h>
+
 #include "editor/input/input.h"
 #include "editor/core/action.h"
 
 int editor_handle_input(Editor* editor, struct event event) {
 	int ret = 1;
+
+	if (editor->has_window) {
+		return editor_handle_window_input(
+			editor, 
+			event
+		);
+	}
 
 	if (editor->status_bar.active && editor->status_bar.type == PT_INFO) {
 		if (event.type == EVENT_KEY)
@@ -14,12 +23,6 @@ int editor_handle_input(Editor* editor, struct event event) {
 		{
 			editor->status_bar.active = 0;
 		}
-	}
-
-	if (editor->has_window) {
-		editor_handle_window_input(editor, event);
-
-		return ret;
 	}
 
 	switch(event.type) {

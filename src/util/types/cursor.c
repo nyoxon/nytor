@@ -1,4 +1,4 @@
-#define _GNU_SOURCE
+// #define _GNU_SOURCE
 #include <wchar.h>
 
 #include "util/types/cursor.h"

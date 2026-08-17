@@ -21,6 +21,7 @@ extern const char PROMPT_INVALID_ARG[];
 extern const char PROMPT_INVALID_COMMAND[];
 extern const char PROMPT_NO_ARGS[];
 extern const char PROMPT_FILE_EXISTS[];
+extern const char PROMPT_FILE_EXISTS_INTERNALLY[];
 extern const char PROMPT_FILE_DNT_EXIST[];
 extern const char PROMPT_OUT_OF_BOUNDS[];
 extern const char PROMPT_INSUFFICIENT_ARGS[];
@@ -34,6 +35,15 @@ extern const char PROMPT_EMPTY_ON_MATCH[];
 extern const char PROMPT_ARG_TOO_LONG[];
 extern const char PROMPT_INVALID_LANGUAGE[];
 extern const char PROMPT_PERM_DENIED[];
+extern const char PROMPT_FILE_MODIFIED[];
+extern const char PROMPT_FILE_DELETED[];
+extern const char PROMPT_FILE_ATTRIB_CHANGED[];
+extern const char PROMPT_FILE_MOVED_FROM[];
+extern const char PROMPT_FILE_UNTITLED[];
+extern const char PROMPT_HAS_EQUAL_FILE[];
+extern const char PROMPT_UNSAVED_CHANGES[];
+extern const char PROMPT_SAVE_BEFORE_EXIT[];
+extern const char PROMPT_FILE_UNSAVED_CHANGES[];
 
 typedef enum {
 	PT_INTERACTIVE,
@@ -56,7 +66,7 @@ typedef struct {
 	TerminalSize tsize;
 } Prompt;
 
-Prompt prompt_new();
+Prompt prompt_new(TerminalSize tsize);
 void prompt_init(Prompt* pt, const char* label, PromptType type);
 void prompt_init_u32string(Prompt* pt, const u32string* lb, PromptType type);
 
@@ -88,5 +98,7 @@ void prompt_handle_normal_input
 	struct normal_key key,
 	const struct normal_key* keybinds
 );
+
+void prompt_cursor_update(Prompt* pt);
 
 #endif

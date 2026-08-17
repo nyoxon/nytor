@@ -1,0 +1,8 @@
+Package: nyt
+Version: 1.0.0
+Section: editors
+Priority: optional
+Architecture: amd64
+Maintainer: nyoxon
+Description: Terminal-based text editor designed for programming
+ A terminal-based editor written in C.

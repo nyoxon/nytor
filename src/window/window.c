@@ -5,12 +5,6 @@
 #define WINDOW_MAX_WIDTH_MULTIPLIER 0.5
 #define WINDOW_MAX_HEIGHT_MULTIPLIER 0.5
 
-static void vector_destroy_string(void* ptr) {
-	u32string* string = ptr;
-
-	u32string_free(string);
-}
-
 size_t window_width(const Window* w) {
 	return w->tsize.cols * w->sw;
 }
@@ -52,16 +46,13 @@ Window window_new(WindowOptions* options) {
 		.on_select = options->on_select
 	};
 
-	w.width = w.tsize.cols * w.sw;
-	w.height = w.tsize.rows * w.sh;
-
 	set_valid_size(&w);
 
 	switch (options->pos_type) {
 	case WINDOWPOS_CENTRALIZED:
 		w.pos = (Position) {
-			(w.tsize.cols - w.width) / 2,
-			(w.tsize.rows - w.height) / 2
+			(w.tsize.cols - window_width(&w)) / 2,
+			(w.tsize.rows - window_height(&w)) / 2
 		};
 
 		break;
@@ -76,7 +67,7 @@ Window window_new(WindowOptions* options) {
 
 	set_valid_pos(&w);
 
-	vector_init(&w.content, sizeof(u32string), vector_destroy_string);
+	vector_init(&w.content, sizeof(u32string), u32string_vector_destroy);
 
 	w.cursor.pos = POS_ZERO;
 	w.cursor.preferred_column = 0;

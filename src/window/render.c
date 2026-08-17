@@ -16,12 +16,13 @@ static size_t draw_textu8
 void window_draw
 (
 	const Window* w,
-	size_t max_width, 
-	size_t max_height,
 	const struct window_color* color
 ) 
 {
 	Position pos = w->pos;
+
+	size_t max_width = w->tsize.cols;
+	size_t max_height = w->tsize.rows;
 
 	if (pos.x > max_width || pos.y > max_height) {
 		return;
@@ -30,21 +31,21 @@ void window_draw
 	move_terminal_cursor(pos.x, pos.y);
 
 	write_color(&color->border);
-	u32_print(UP_LEFT);
+	u32_print_cp(UP_LEFT);
 
-	size_t screen_rows = MIN(max_height - pos.y, w->height);
-	size_t screen_cols = MIN(max_width - pos.x, w->width);
+	size_t screen_rows = MIN(max_height - pos.y, window_height(w));
+	size_t screen_cols = MIN(max_width - pos.x, window_width(w));
 
 	size_t middle;
 	char tmp[64];
 
 	if (w->view.row_offset > 0) {
 		sprintf(tmp, "+%zu", w->view.row_offset);
-		middle = (w->width - strlen(tmp)) / 2;
+		middle = (window_width(w) - strlen(tmp)) / 2;
 	}
 
 	else {
-		middle = w->width;
+		middle = window_width(w);
 		tmp[0] = '\0';
 	}
 
@@ -54,11 +55,11 @@ void window_draw
 			i += printed;
 		}
 
-		u32_print(HORIZONTAL);
+		u32_print_cp(HORIZONTAL);
 	}
 
-	if (pos.x + w->width <= max_width) {
-		u32_print(UP_RIGHT);
+	if (pos.x + window_width(w) <= max_width) {
+		u32_print_cp(UP_RIGHT);
 	}
 
 
@@ -66,7 +67,7 @@ void window_draw
 
 	for (size_t y = 0; y < screen_rows; y++) {
 		move_terminal_cursor(pos.x, pos.y + y + 1);
-		u32_print(VERTICAL);
+		u32_print_cp(VERTICAL);
 
 		size_t window_row = y + w->view.row_offset;
 
@@ -92,7 +93,7 @@ void window_draw
 			size_t remaining = screen_cols - printed;
 
 			for (size_t i = 0; i < remaining; i++) {
-				u32_print(U' ');
+				u32_print_cp(U' ');
 			}
 		}
 
@@ -100,32 +101,32 @@ void window_draw
 			write_color(&color->text);
 
 			for (size_t j = 0; j < screen_cols; j++) {
-				u32_print(U' ');
+				u32_print_cp(U' ');
 			}
 		}
 
 		reset_color();
 		
 		write_color(&color->border);
-		if (pos.x + w->width <= max_width) {
-			u32_print(VERTICAL);
+		if (pos.x + window_width(w) <= max_width) {
+			u32_print_cp(VERTICAL);
 		}
 	}
 
-	if (pos.y + w->height <= max_height) {
-		move_terminal_cursor(pos.x, pos.y + 1 + w->height);
+	if (pos.y + window_height(w) <= max_height) {
+		move_terminal_cursor(pos.x, pos.y + 1 + window_height(w));
 
-		u32_print(DOWN_LEFT);
+		u32_print_cp(DOWN_LEFT);
 
 		if (content->size > screen_rows + w->view.row_offset) {
 			sprintf(tmp, "+%zu", content->size - 
 				(screen_rows + w->view.row_offset));
 
-			middle = (w->width - strlen(tmp)) / 2;
+			middle = (window_width(w) - strlen(tmp)) / 2;
 		}
 
 		else {
-			middle = w->width;
+			middle = window_width(w);
 			tmp[0] = '\0';
 		}
 
@@ -137,11 +138,11 @@ void window_draw
 				i += printed;
 			}
 
-			u32_print(HORIZONTAL);
+			u32_print_cp(HORIZONTAL);
 		}
 
-		if (pos.x + w->width <= max_width) {
-			u32_print(DOWN_RIGHT);
+		if (pos.x + window_width(w) <= max_width) {
+			u32_print_cp(DOWN_RIGHT);
 		}
 	}
 
@@ -173,7 +174,7 @@ void window_clamp_cursor_to_view(Window* w) {
 	);
 
 	size_t left = w->view.col_offset;
-	size_t right = left + w->width - 1;
+	size_t right = left + window_width(w) - 1;
 
 	if (cursor_screen_x < left) {
 		w->cursor.pos.x = screen_to_file_x(

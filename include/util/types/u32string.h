@@ -7,6 +7,8 @@
 
 #include "util/types/vector.h"
 
+void u32string_vector_destroy(void* ptr);
+
 typedef struct {
 	Vector text;
 } u32string;
@@ -18,7 +20,7 @@ u32string u32string_with_capacity(size_t capacity);
 u32string u32string_from(const char* text);
 u32string u32string_from_raw(uint32_t* text, size_t size);
 u32string u32string_from_raw_copy(const uint32_t* text, size_t size);
-u32string u32string_slice(u32string* string, size_t begin, size_t end);
+u32string u32string_slice(const u32string* string, size_t begin, size_t end);
 u32string u32string_clone(const u32string* string);
 
 void u32string_push(u32string* string, uint32_t c);
@@ -166,9 +168,18 @@ void u32ncpy
 long u32stol(const u32string* s);
 int u32_is_printable(uint32_t cp);
 char* u32_to_utf8(const uint32_t* text, size_t len);
+
+size_t utf8_to_u32
+(
+	const char* text, 
+	uint32_t* out, 
+	size_t out_size
+);
+
 int u32_isspace(uint32_t c);
 
-void u32_print(uint32_t cp);
+void u32_print_cp(uint32_t cp);
+void u32_print(const uint32_t* string, size_t size);
 
 
 #endif

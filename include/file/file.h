@@ -15,6 +15,7 @@
 #include "util/types/cursor.h"
 #include "util/types/clipboard.h"
 #include "util/types/selection.h"
+#include "util/types/trie.h"
 #include "plugins/plugin.h"
 #include "plugins/language_syntax.h"
 
@@ -80,10 +81,23 @@
 // for more informations on how the program handles permissions
 // and permission changes.
 typedef struct {
-	char* filename;
-	Vector lines; // Vector of Lines
+	char* filename; 	// must be freed
+	Vector lines; 		// must be freed
 
-	int dirty;
+
+	/*
+	The relationship between line.dirty and file.dirty
+	isn't that direct:
+
+	line.dirty usually implies file.dirty (except in special cases)
+
+	file.dirty may implies line.dirty */
+
+
+	int dirty;			// if there are unsaved changes
+	int has_dirty_line; // if there is at least one dirty line
+
+
 
 	// WARNING ABOUT tab_size: in various parts of the code
 	// that handle the logical position of the cursor within
@@ -105,8 +119,20 @@ typedef struct {
 	// For this reason, using the pattern above in any type
 	// of operation fundamental to rendering is a serious error.
 	size_t tab_size;
-	int use_spaces;
+	int use_spaces; // ' ' instead of '\t'
 } File;
+
+
+typedef int (*IsWordChar)(uint32_t c);
+
+
+typedef struct {
+	const char* filename;
+	size_t tab_size;
+	int use_spaces;
+	Trie* trie;
+	IsWordChar is_word_char;
+} FileOptions;
 
 void file_init(File* file);
 void file_push(File* file, Line* line);
@@ -119,12 +145,11 @@ void file_push(File* file, Line* line);
 int file_open
 (
 	File* file, 
-	const char* filename,
-	size_t tab_size,
-	int use_spaces,
+	FileOptions* options,
 	Result* result
 );
 
+void file_free(File* file);
 
 
 // must be used only if the lexer exists
@@ -139,10 +164,20 @@ void file_create_tokens(File* file, struct lexer* lexer);
 void file_recalculate_tokens
 (
 	File* file,
-	struct lexer* lexer
+	struct lexer* lexer,
+	ssize_t* start, // only for debug
+	ssize_t* end    // only for debug
 );
 
-void file_sync(File* file);
+
+// reopen a file
+void file_sync
+(
+	File* file, 
+	Trie* trie, 
+	IsWordChar is_word_char,
+	Result* result
+);
 
 
 void file_convert_spaces_to_tabs(File* file);
@@ -158,16 +193,14 @@ int file_insert_char
 (
 	File* file, 
 	const Position pos, 
-	uint32_t c,
-	Result* result
+	uint32_t c
 );
 
 // deletes a char in the c->x position of the (c->y)º line
 int file_delete_char
 (
 	File* file, 
-	const Position pos, 
-	Result* result
+	const Position pos
 );
 
 
@@ -194,7 +227,6 @@ int file_move_line_up(File* file, size_t y, Result* result);
 int file_merge_lines(File* file, const Position pos, Result* result);
 
 
-// add tab_size spaces at the beginning of a line
 int file_indent_a_line
 (
 	File* file, 
@@ -209,7 +241,6 @@ int file_indent_selection
 	Result* result
 );
 
-// remove tab_size spaces from the beginning of a line
 int file_unindent_a_line
 (
 	File* file, 
@@ -232,8 +263,7 @@ int file_comment_line
 	File* file,
 	size_t y,
 	const char* comment_fmt,
-	ssize_t* move_cursor,
-	Result* result
+	ssize_t* move_cursor
 );
 
 int file_comment_selection
@@ -244,9 +274,6 @@ int file_comment_selection
 	size_t cursor_y,
 	ssize_t* move_cursor
 );
-
-
-void file_free(File* file);
 
 
 // delete a selection in a file
@@ -261,7 +288,7 @@ int file_delete_selection
 // copy a selection to clipboard
 int file_copy_selection
 (
-	File* file, 
+	const File* file, 
 	Clipboard* cb, 
 	Selection* sel,
 	Result* result
@@ -272,7 +299,7 @@ int file_copy_selection
 int file_paste_clipboard
 (
 	File* file, 
-	Clipboard* cb, 
+	const Clipboard* cb, 
 	Cursor* c,
 	Result* result
 );
@@ -281,22 +308,23 @@ int file_paste_clipboard
 // create a selection selecting a line
 int file_select_line
 (
-	File* file, 
+	const File* file, 
 	size_t y, 
 	Selection* sel,
-	Result* result
+	int select_line_selects_next
 );
 
 
 // create a selection selecting all file
 int file_select_all_file
 (
-	File* file, 
-	Selection* sel, 
-	Result* result
+	const File* file, 
+	Selection* sel
 );
 
 u32string* file_get_line_text(File* file, size_t y);
+const u32string* file_get_line_text_const(const File* file, size_t y);
+
 Vector* file_get_line_tokens(File* file, size_t y);
 
 Line* file_get_line
@@ -306,6 +334,7 @@ Line* file_get_line
 );
 
 void file_set_line_dirty(File* file, size_t y);
+void file_set_has_dirty_line(File* file);
 
 
 size_t file_num_lines
@@ -319,6 +348,8 @@ size_t file_size_line
 	File* file,
 	size_t y
 );
+
+void file_set_all_lines_dirty(File* file);
 
 
 #endif

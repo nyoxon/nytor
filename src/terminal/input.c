@@ -21,7 +21,7 @@ void show_cursor() {
 
 void clean_terminal() {
 	show_cursor();
-	write(STDOUT_FILENO, "\x1b]122\x07", strlen("\x1b]112\x07"));
+	// write(STDOUT_FILENO, "\x1b]122\x07", strlen("\x1b]112\x07"));
 	write(STDOUT_FILENO, "\033[3J", 4);
 	write(STDOUT_FILENO, "\033[2J", 4);
 	write(STDOUT_FILENO, "\033[H", 3);
@@ -109,9 +109,6 @@ char* str_action(int index) {
 	case ACTION_MOVE_START_LINE:
 		return strdup("move_start_line");
 
-	case ACTION_MOVE_INDENT:
-		return strdup("move_indent");
-
 	case ACTION_MOVE_END_LINE:
 		return strdup("move_end_line");
 
@@ -180,6 +177,12 @@ char* str_action(int index) {
 
 	case ACTION_REPLACE:
 		return strdup("replace");
+
+	case ACTION_QUIT_FORCED:
+		return strdup("quit!");
+
+	case ACTION_CLOSE_FILE_FORCED:
+		return strdup("close_forced");
 
 	case ACTION_UNDO:
 		return strdup("undo");

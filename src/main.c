@@ -1,29 +1,23 @@
 #include <stdio.h>
 #include <assert.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
 #include <signal.h>
 #include <getopt.h>
 #include <dlfcn.h>
 #include <poll.h>
-#include <time.h>
 #include <locale.h>
+#include <errno.h>
 
-#include "terminal/input.h"
-#include "editor/core/scroll.h"
 #include "editor/core/action.h"
 #include "editor/input/input.h"
 #include "editor/render/render.h"
 #include "editor/editor.h"
-#include "util/files.h"
 #include "plugins/plugin.h"
 #include "terminal/parser.h"
-#include "util/types/u32string.h"
-#include "window/window.h"
-#include "window/render.h"
 
 #define TARGET_FPS 40 			// it's already enough
+
+static int iterations = 0;
 
 static volatile sig_atomic_t exit_requested = 0;
 static volatile sig_atomic_t terminal_resized = 0;
@@ -46,7 +40,8 @@ static int parse_args
 );
 
 int main(int argc, char* argv[]) {
-	setlocale(LC_ALL, "");
+	setlocale(LC_ALL, ""); // optional
+
 
 	// --- PARSE CLI ARGUMENTS ---
 	int debug_mode = 0;
@@ -61,13 +56,13 @@ int main(int argc, char* argv[]) {
 
 	// ensures that the filepath will differ from the defined
 	// cli arguments used by getopt_long
-
 	if (optind != argc) {
 		filenames = argv + optind;
 	}
 
-	// --- EDITOR INIT AND CONFIGURATIONS ---
 
+
+	// --- EDITOR INIT AND CONFIGURATIONS ---
 	Editor editor;
 
 	if (editor_init(
@@ -87,17 +82,16 @@ int main(int argc, char* argv[]) {
 		return 1;
 	}
 
-	// --- RENDER AND MAIN LOOP ---
 
-	int running = 1;
+
+	// --- TERMINAL INIT ---
 	activate_terminal();
-
 	install_handlers();
-
 	detect_clipboard_backend();
 
-	int need_render = 1;
 
+
+	/// --- POLL INIT ---
 	struct pollfd fds[] = {
 		{
 			.fd = STDIN_FILENO,
@@ -109,7 +103,30 @@ int main(int argc, char* argv[]) {
 		}
 	};
 
-	while (running) { 
+
+	// i don't think using timeout in the poll
+	// when in debug mode is very useful, but whatever
+	int timeout =(editor.debug_mode)
+		? (int) frame_interval_ms(TARGET_FPS)
+		: -1; 
+
+
+	/// --- MAIN LOOOOOOOP ---
+	int running = 1;
+	int need_render = 1;
+
+	while (running) {
+		/*
+		Flow:
+
+		signals -> 
+			inotify -> 
+				render -> 
+					log -> poll (user input/inotify, may block)
+		*/
+
+
+		/// --- SIGNALS ---
 		if (exit_requested) {
 			deactivate_terminal();
 			editor_free(&editor);
@@ -132,6 +149,9 @@ int main(int argc, char* argv[]) {
 			need_render = 1; // maybe unnecessary
 		}
 
+
+
+		/// --- INOTIFY ---
 		if (editor.actual_file->file.filename &&
 			editor_file_changed(editor.actual_file))
 		{
@@ -139,9 +159,28 @@ int main(int argc, char* argv[]) {
 			need_render = 1;
 		}
 
-		int ret = poll(fds, 2, frame_interval_ms(TARGET_FPS));
+
+
+
+		/// --- RENDER ---
+		if (need_render) {
+			editor_update_syntax(&editor);
+			editor_render(&editor);
+
+			need_render = 0;
+		}
+
+
+
+		/// --- POLL ---
+		int ret = poll(fds, 2, timeout);
 
 		if (ret > 0) {
+			if (editor.debug_mode) {
+				log_write(&editor.log, "\nITERATION %zu\n", iterations);
+				iterations += 1;
+			}
+
 			if (fds[0].revents & POLLIN) {
 				struct event event = parser_read_key();
 
@@ -154,18 +193,18 @@ int main(int argc, char* argv[]) {
 			}
 		}
 
-		if (debug_mode && running) {
-			editor_log_write(&editor);
-		}
+		else if (ret == -1) {
+			if (errno == EINTR) {
+				continue;
+			}
 
-		if (need_render && running) {
-			editor_update_syntax(&editor);
-			editor_render(&editor);
+			break; // MAYBE: maybe a better handler
 		}
-
-		need_render = 0;
 	}
 
+
+
+	/// --- "goodbye, world!\n" ---
 	deactivate_terminal();
 	editor_free(&editor);
 
@@ -225,16 +264,15 @@ static uint32_t frame_interval_ms(uint32_t fps) {
 
 static void print_help() {
 	printf("--- nytor ---\n\n");
-	printf("usage: nytor [ARGUMENTS] [filepaths]\n\n");
-	printf("for information on how to use the editor, run the program\n");
-	printf("and type \"help\" at the command prompt (ctrl + n, default keybind)\n\n");
+	printf("usage: nyt [ARGUMENTS] [filepaths]\n\n");
 	printf("\n--- [ARGUMENTS] --- \n\n");
 	printf("  --help		-> prints this message\n\n");
-	printf("  --debug=[filepath] 	-> debug_mode\n");
-	printf("  				if filepath is omitted, a default file\n");
-	printf("				called \"debug.ny\" will be created\n\n");
+	printf("  --debug 		-> debug_mode\n\n");
+	printf("  --version		-> shows the version of the program\n\n");
 	printf("note: you must pass all arguments before passing a file;\n");
-	printf("otherwise, the passed argument will be treated as a file\n");
+	printf("otherwise, the passed argument will be treated as a file\n\n");
+	printf("see the man page if you have some free time:\n");
+	printf("\"man nyt\" or \"man manual/nyt.1\" after cloning github.com/nyoxon/nytor\n");
 }
 
 static int parse_args
@@ -249,10 +287,11 @@ static int parse_args
 	struct option long_opts[] = {
 		{"debug", no_argument, 0, 'd'},
 		{"help", no_argument, 0, 'h'},
+		{"version", no_argument, 0, 'v'},
 		{0, 0, 0, 0}
 	};
 
-	while ((opt = getopt_long(argc, argv, "+d:h::", long_opts, NULL)) != 1) 
+	while ((opt = getopt_long(argc, argv, "+dvh", long_opts, NULL)) != 1) 
 	{
 		switch (opt) {
 			case 'd':
@@ -262,7 +301,10 @@ static int parse_args
 			case 'h':
 				print_help();
 				return 1;
-				break;               
+
+			case 'v':
+				printf("nytor %s\n", NYTOR_VERSION);
+				return 1;
 
 			default:
 				return 0;

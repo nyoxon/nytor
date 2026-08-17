@@ -11,13 +11,13 @@
 #define MAX_LINE_TOKENS 256
 
 typedef struct {
-	u32string text;
+	u32string text;		// there is only utf32 enconding for now
 	Vector tokens;
 
-	enum lex_state state_in;
-	enum lex_state state_out;
+	enum lex_state state_in; // state before
+	enum lex_state state_out; // state after
 
-	int dirty;
+	int dirty;			// must necessarily be retokenized
 } Line;
 
 void line_init(Line* line);

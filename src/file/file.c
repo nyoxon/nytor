@@ -20,6 +20,7 @@ void file_init(File* file) {
 		return;
 	}
 
+	file->filename = NULL;
 	vector_init(&file->lines, sizeof(Line), vector_line_destroy);
 }
 
@@ -35,9 +36,25 @@ void file_set_line_dirty(File* file, size_t y) {
 	line->dirty = 1;
 }
 
+void file_set_all_lines_dirty(File* file) {
+	for (size_t i = 0; i < file->lines.size; i++) {
+		Line* line = vector_get(&file->lines, i);
+		line->dirty = 1;
+	}
+}
+
+void file_set_has_dirty_line(File* file) {
+	file->has_dirty_line = 1;
+}
+
 u32string* file_get_line_text(File* file, size_t y) {
 	Line* line = vector_get(&file->lines, y);
 	return &line->text;
+}
+
+const u32string* file_get_line_text_const(const File* file, size_t y) {
+	const Line* line = vector_get_const(&file->lines, y);
+	return (const u32string*) &line->text;
 }
 
 Vector* file_get_line_tokens(File* file, size_t y) {
@@ -86,13 +103,20 @@ void file_push(File* file, Line* line) {
 	vector_push(&file->lines, line);
 }
 
+
+// open and read a fd
 static uint32_t* read_file
 (
 	const char* filename, // a non-null pointer
 	ssize_t* size, // a non null pointer
+	Trie* trie,
+	IsWordChar is_word_char,
 	Result* result // a non null pointer
 ) 
 {
+	// return = NULL and size = -1 -> error
+	// return = NULL and size = 0 -> empty file
+
 	int fd = open(filename, O_RDONLY);
 
 	if (fd < 0) {
@@ -142,7 +166,7 @@ static uint32_t* read_file
 
 		if (result) {
 			result_set_reason(result,
-				"read_file: bytes is invalid");
+				"read_file: invalid fd");
 			result->type = ERROR_MALLOC;
 		}
 
@@ -195,17 +219,28 @@ static uint32_t* read_file
 		i += n;
 	}
 
+	free(bytes);
+
 	*size = j;
-	data = realloc(data, j * sizeof(*data));
+
+	uint32_t* tmp = realloc(data, j * sizeof(*data));
+
+	if (tmp) {
+		data = tmp;
+	}
+
+	if (trie) {
+		trie_build(trie, data, *size, is_word_char);
+	}
 
 	if (result) {
 		result_ok(result);
 	}
 
-	free(bytes);
 	return data;
 }
 
+// creates the lines based on the '\n' present in the file
 static int split_lines
 (
 	File* file, 
@@ -234,6 +269,10 @@ static int split_lines
 		start = end + 1;
 	}
 
+	if (size > 0) {
+		file->has_dirty_line = 1;
+	}
+
 	return EIE_OK;
 }
 
@@ -247,30 +286,33 @@ static void file_create_empty
 	file_init(file);
 	file->filename = NULL;
 	file->dirty = 1;
+	file->has_dirty_line = 0;
 	file->tab_size = tab_size;
 	file->use_spaces = use_spaces;
 
 	Line line = line_new();
+	line.dirty = 0;
 
 	file_push(file, &line);
 }
 
+
+/// --- FILE_OPEN ---
 int file_open
 (
 	File* file, 
-	const char* filename, 
-	size_t tab_size,
-	int use_spaces,
+	FileOptions* options,
 	Result* result
-) 
+)
 {   
-	if (!file) {
-		result_set_reason(result,
-			"file_open: file is a null pointer");
-		result->type = ERROR_NULL_POINTER;
+	assert(file != NULL);
+	assert(options != NULL);
 
-		return EIE_FATAL_ERROR;
-	}
+	const char* filename = options->filename;
+	size_t tab_size = options->tab_size;
+	int use_spaces = options->use_spaces;
+	Trie* trie = options->trie;
+	IsWordChar is_word_char = options->is_word_char;
 
 	if (!filename) {
 		file_create_empty(file, tab_size, use_spaces);
@@ -284,7 +326,9 @@ int file_open
 
 	uint32_t* data = read_file(
 		filename, 
-		&size, 
+		&size,
+		trie,
+		is_word_char,
 		result);
 
 	if (!data) {
@@ -317,6 +361,7 @@ int file_open
 			file_create_empty(file, tab_size, use_spaces);
 			file->filename = strdup(filename);
 			file->dirty = 0;
+			file->has_dirty_line = 0;
 
 			return EIE_OK;
 		}
@@ -327,6 +372,7 @@ int file_open
 	file_init(file);
 	file->filename = strdup(filename);
 	file->dirty = 0;
+	file->has_dirty_line = 1;
 	file->tab_size = tab_size;
 	file->use_spaces = use_spaces;
 
@@ -346,6 +392,7 @@ int file_open
 	return EIE_OK;
 }
 
+// convert only indentation spaces
 void file_convert_spaces_to_tabs
 (
 	File* file
@@ -401,14 +448,19 @@ void file_convert_spaces_to_tabs
 				run_len = 0;        
 			}
 		}
+
+		file_set_line_dirty(file, i);
 	}
 
 	u32string_free(&tab);
 
 	file->dirty = 1;
+	file->has_dirty_line = 1;
 	file->use_spaces = 0;
 }
 
+
+// convert all tabs
 void file_convert_tabs_to_spaces(File* file) {
 	size_t tab_size = file->tab_size;
 
@@ -461,52 +513,67 @@ void file_convert_tabs_to_spaces(File* file) {
 				screen_x += width;
 			}
 		}
+
+		file_set_line_dirty(file, i);
 	}
 
 	u32string_free(&spaces);
 
 	file->dirty = 1;
+	file->has_dirty_line = 1;
 	file->use_spaces = 1;
 }
 
-void file_sync(File* file) {
+
+/// --- FILE_SYNC ---
+void file_sync
+(
+	File* file, 
+	Trie* trie, 
+	IsWordChar is_word_char,
+	Result* result
+)
+{
+
 	vector_free(&file->lines);
 
 	ssize_t size;
 	uint32_t* data = read_file(
 		file->filename, 
-		&size, 
-		NULL);
+		&size,
+		trie,
+		is_word_char, 
+		result);
 
 	file->dirty = 0;
 
 	// file with empty lines
 	if (size == 0) {
 		Line line = line_new();
+		line.dirty = 0;
 
 		file_push(file, &line);
+
+		file->has_dirty_line = 0;
 	} 
 
 	else {
 		split_lines(file, data, size);
 	}
 
+	result_ok(result);
+
 	free(data);
 }
 
+
+/// --- FILE_SAVE ---
 int file_save(File* file, Result* result) {
-	if (!file) { 
-		result_set_reason(result,
-			"file_save: file is a null pointer");
-		result->type = ERROR_NULL_POINTER;
-
-		return EIE_FATAL_ERROR; 
-	}
-
 	if (!file->dirty) {
 		return EIE_NOT_AN_ERROR;
 	}
 
+	// create if don't exist
 	int fd = open(file->filename, O_WRONLY | O_TRUNC | O_CREAT, 0644);
 
 	if (fd < 0) {
@@ -528,9 +595,10 @@ int file_save(File* file, Result* result) {
 			}
 		}
 
-		return EIE_FATAL_ERROR;
+		return EIE_NOT_FATAL_ERROR;
 	}
 
+	// write aaaa
 	if (file->lines.size == 0) {
 		write(fd, "", 1);
 		result_ok(result);
@@ -542,14 +610,6 @@ int file_save(File* file, Result* result) {
 
 	for (size_t i = 0; i < file->lines.size; i++) {
 		u32string* line_text = file_get_line_text(file, i);
-
-		if (!line_text) {
-			result_set_reason(result,
-				"file_save: line_text is invalid");
-			result->type = ERROR_NULL_POINTER;
-
-			return EIE_NOT_FATAL_ERROR;         
-		}
 
 		char* text = u32string_into_u8(line_text);
 
@@ -577,6 +637,8 @@ int file_save(File* file, Result* result) {
 	return EIE_OK;
 }
 
+
+/// --- FILE_CREATE_TOKENS ---
 void file_create_tokens(File* file, struct lexer* lexer) {
 	if (!file || !lexer) {
 		return;
@@ -588,18 +650,24 @@ void file_create_tokens(File* file, struct lexer* lexer) {
 		Line* line = vector_get(&file->lines, i);
 
 		if (i == 0) {
-			line_tokenize(line, lexer);
+			line_tokenize(line, lexer); // line.dirty = 0
 			state = line->state_out;
 		}
 
 		else {
 			line->state_in = state;
 
-			line_tokenize(line, lexer);
+			line_tokenize(line, lexer); // line.dirty = 0
+
+			if (u32string_is_empty(&line->text)) {
+				line->state_out = state;
+			}
 
 			state = line->state_out;
 		}
 	}
+
+	file->has_dirty_line = 0;
 }
 
 static enum lex_state get_state_before
@@ -617,33 +685,21 @@ static enum lex_state get_state_before
 	return line->state_out;
 }
 
+
+/// --- FILE_RECALCULATE_TOKENS ---
 void file_recalculate_tokens
 (
 	File* file,
-	struct lexer* lexer
+	struct lexer* lexer,
+	ssize_t* start,
+	ssize_t* end
 ) 
 {
 	if (!file || !lexer) {
 		return;
 	}
 
-	/*
-	The 'dirtiness' of a line should imply the
-	'dirtiness' of the file as a whole.
-	Therefore, regarding any potential bug
-	in the token calculation, the first thing
-	to consider is whether there is indeed
-	strong synchronization between these
-	two concepts.
-
-	Even though the 'dirtiness' of a file
-	dictates whether is possible to do
-	a token recalculation operation, this
-	function must not unset the file->dirty
-	flag as line_tokenize does to a line.
-	*/
-
-	if (!file->dirty) {
+	if (!file->has_dirty_line) {
 		return;
 	}
 
@@ -872,6 +928,55 @@ void file_recalculate_tokens
 
 	*/
 
+	/*
+	BUG 😠: 13/08/26
+
+	I was finally reviewing the code for the final release
+	when i stumbled upon a GAMER bug.
+
+	The bug occurs when the replace operation takes place.
+	Since that operation can modify non-contiguous lines,
+	this function's loop will not reach all the lines
+	it's supposed to reach.
+
+	Example:
+
+	10 asd
+	11 asd
+	12 very angry
+	13 asd
+
+	replace "asd" by "blablu"
+
+	10 blablu 			dirty
+	11 blablu 			dirty
+	12 very angry 		ndirty
+	13 blablue			dirty
+
+	The loop will reach line 12, see that it's not dirty and
+	that no state propagation is required; therefore, it will
+	stop there and line 13 (along with any subsequent lines)
+	will not be tokenized.
+
+	I thought of a few things to solve this:
+
+	1) a File having a flag indicator whether it was modified
+	via replace and, in that case, the first and last lines
+	that were modified
+
+	2) a File having a count of dirty lines
+
+	3) in the replace function, upon finding the first match,
+	all lines up to the last match will be considered dirty.
+
+	The third one is the easiest to use for now, and it's
+	the one i'll use 🤏
+	*/
+
+	if (start) {
+		*start = first_dirty;
+	}
+
 	if (first_dirty >= 0) {
 		enum lex_state state = get_state_before(file, first_dirty);
 
@@ -888,17 +993,15 @@ void file_recalculate_tokens
 			if (needs_tokenize) {
 				line->state_in = state;
 
-				// I thought of this behavior without
+				// i thought of this behavior without
 				// giving it much thought, but it
 				// seems correct to me
+
 				if (u32string_is_empty(&line->text)) {
 					line->state_out = state;
-					line->dirty = 0;
-				} 
-
-				else {
-					line_tokenize(line, lexer);
 				}
+
+				line_tokenize(line, lexer);
 			}
 
 			state = line->state_out;
@@ -908,129 +1011,74 @@ void file_recalculate_tokens
 				old_in == line->state_in &&
 				old_out == line->state_out) 
 			{
+				if (end) {
+					*end = i;
+				}
+
 				break;
+			}
+
+			if (end && i == file->lines.size - 1) {
+				*end = i;
 			}
 		}
 
 		lexer->reset(lexer);
 	}
+
+	file->has_dirty_line = 0;
 }
 
+
+/// --- FILE_INSERT_CHAR ---
 int file_insert_char
 (
 	File* file, 
 	const Position pos, 
-	uint32_t c,
-	Result* result
+	uint32_t c
 ) 
 {
-	if (!file) { 
-		result_set_reason(result,
-			"file_insert_char: file is a null pointer");
-		result->type = ERROR_NULL_POINTER;
-
-		return EIE_FATAL_ERROR; 
-	}
-
-	if (pos.y >= file->lines.size) {
-		result_set_reason(result,
-			"file_insert_char: pos.y >= file->lines.size");
-		result->type = ERROR_INDEX_OUT_OF_BOUNDS;
-
-		return EIE_NOT_FATAL_ERROR;
-	}
-
 	Line* line = vector_get(&file->lines, pos.y);
 
-	if (!line) {
-		result_set_reason(result,
-			"file_insert_char: line is invalid");
-		result->type = ERROR_NULL_POINTER;
-
-		return EIE_NOT_FATAL_ERROR;
-	}
-
 	u32string* line_text = &line->text;
-
-	if (!line_text) {
-		result_set_reason(result,
-			"file_insert_char: line_text is invalid");
-		result->type = ERROR_NULL_POINTER;
-
-		return EIE_NOT_FATAL_ERROR;
-	}
 
 	u32string_insert(line_text, c, pos.x);
 
 	file->dirty = 1;
+	file->has_dirty_line = 1;
 	line->dirty = 1;
-
-	result_ok(result);
 
 	return EIE_OK;
 }
 
+
+/// --- FILE_DELETE_CHAR ---
 int file_delete_char
 (
 	File* file, 
-	const Position pos, 
-	Result* result
+	const Position pos
 ) 
 {
-	if (!file) { 
-		result_set_reason(result,
-			"file_delete_char: file is a null pointer");
-		result->type = ERROR_NULL_POINTER;
-
-		return EIE_FATAL_ERROR; 
-	}
-
-	if (pos.y >= file->lines.size) {
-		result_set_reason(result,
-			"file_delete_char: pos.y >= file->lines.size");
-		result->type = ERROR_INDEX_OUT_OF_BOUNDS;
-
-		return EIE_NOT_FATAL_ERROR;
-	}
-
 	if (pos.x == 0) {
-		result_set_reason(result,
-			"file_delete_char: pos.x == 0");
-		result->type = ERROR_INDEX_OUT_OF_BOUNDS;
-
-		return EIE_NOT_FATAL_ERROR;
+		return EIE_NOT_AN_ERROR;
 	}
 
 	Line* line = vector_get(&file->lines, pos.y);
 
-	if (!line) {
-		result_set_reason(result,
-			"file_delete_char: line is invalid");
-		result->type = ERROR_NULL_POINTER;
-
-		return EIE_NOT_FATAL_ERROR;
-	}
-
 	u32string* line_text = &line->text;
-
-	if (!line_text) {
-		result_set_reason(result,
-			"file_delete_char: line_text is invalid");
-		result->type = ERROR_NULL_POINTER;
-
-		return EIE_NOT_FATAL_ERROR;
-	}
 
 	u32string_remove(line_text, pos.x - 1, NULL);
 
 	file->dirty = 1;
-	line->dirty = 1;
+	file->has_dirty_line = 1;
 
-	result_ok(result);
+	line->dirty = 1;
 
 	return EIE_OK;
 }
 
+
+/// --- FILE_INSERT_NEWLINE ---
 int file_insert_newline
 (
 	File* file, 
@@ -1038,56 +1086,15 @@ int file_insert_newline
 	Result* result
 ) 
 {
-	if (!file) {
-		result_set_reason(result,
-			"file_insert_newline: file is a null pointer");
-		result->type = ERROR_NULL_POINTER;
-
-		return EIE_FATAL_ERROR; 
-	}
-
-	if (pos.y >= file->lines.size) {
-		result_set_reason(result,
-			"file_insert_newline: pos.y >= file->lines.size");
-		result->type = ERROR_INDEX_OUT_OF_BOUNDS;
-
-		return EIE_NOT_FATAL_ERROR;
-	}
-
 	Line* line = vector_get(&file->lines, pos.y);
-
-	if (!line) {
-		result_set_reason(result,
-			"file_insert_newline: line is invalid");
-		result->type = ERROR_NULL_POINTER;
-
-		return EIE_NOT_FATAL_ERROR;
-	}
-
 	u32string* line_text = &line->text;
-
-	if (!line_text) {
-		result_set_reason(result,
-			"file_insert_newline: line_text is invalid");
-		result->type = ERROR_NULL_POINTER;
-
-		return EIE_NOT_FATAL_ERROR;
-	}
-
-	if (pos.x > u32string_size(line_text)) {
-		result_set_reason(result,
-			"file_insert_newline: pos.x out of bounds");
-		result->type = ERROR_INDEX_OUT_OF_BOUNDS;
-
-		return EIE_NOT_FATAL_ERROR;
-	}
 
 	size_t tail_size = u32string_size(line_text) - pos.x;
 
 	// tail = new line
 	uint32_t* tail_text = malloc(tail_size * sizeof(*tail_text));
 
-	if (!tail_text) {
+	if (!tail_text && result) {
 		result_set_reason(result,
 			"file_insert_newline: tail_text is invalid");
 		result->type = ERROR_MALLOC;
@@ -1107,7 +1114,7 @@ int file_insert_newline
 	size_t head_size = pos.x;
 	uint32_t* head_text = malloc(head_size * sizeof(*head_text));
 
-	if (!head_text) {
+	if (!head_text && result) {
 		result_set_reason(result,
 			"file_insert_newline: head_text is invalid");
 		result->type = ERROR_MALLOC;
@@ -1126,7 +1133,7 @@ int file_insert_newline
 
 	file->dirty = 1;
 	line->dirty = 1;
-	new_line.dirty = 1;
+	file->has_dirty_line = 1;
 
 	vector_insert(&file->lines, pos.y + 1, &new_line);
 
@@ -1135,6 +1142,8 @@ int file_insert_newline
 	return EIE_OK;
 }
 
+
+/// --- FILE_MERGE_LINES ---
 int file_merge_lines
 (
 	File* file, 
@@ -1142,58 +1151,17 @@ int file_merge_lines
 	Result* result
 ) 
 {
-	if (!file) {
-		result_set_reason(result,
-			"file_merge_lines: file is a null pointer");
-		result->type = ERROR_NULL_POINTER;
-
-		return EIE_FATAL_ERROR; 
-	}
-
-	if (pos.y == 0 || pos.y >= file->lines.size) {
-		result_set_reason(result,
-			"file_merge_lines: pos.y == 0 || pos.y >= file->lines.size");
-		result->type = ERROR_INDEX_OUT_OF_BOUNDS;
-
-		return EIE_NOT_FATAL_ERROR;
-	}
-
 	Line* prev_line = vector_get(&file->lines, pos.y - 1);
-
-	if (!prev_line) {
-		result_set_reason(result,
-			"file_merge_lines: prev_line is invalid");
-		result->type = ERROR_NULL_POINTER;
-
-		return EIE_NOT_FATAL_ERROR;
-	}
-
 	u32string* prev_text = &prev_line->text;
-
-	if (!prev_text) {
-		result_set_reason(result,
-			"file_merge_lines: prev_text is invalid");
-		result->type = ERROR_NULL_POINTER;
-
-		return EIE_NOT_FATAL_ERROR;
-	}
 
 	size_t old_prev_size = u32string_size(prev_text);
 	u32string* curr = file_get_line_text(file, pos.y);
-
-	if (!curr) {
-		result_set_reason(result,
-			"file_merge_lines: curr is invalid");
-		result->type = ERROR_NULL_POINTER;
-
-		return EIE_NOT_FATAL_ERROR;
-	}
 
 	size_t curr_size = u32string_size(curr);
 	size_t new_size = old_prev_size + curr_size;
 	uint32_t* new_text = malloc(new_size * sizeof(*new_text));
 
-	if (!new_text) {
+	if (!new_text && result) {
 		result_set_reason(result,
 			"file_merge_lines: new_text is invalid");
 		result->type = ERROR_MALLOC;
@@ -1216,6 +1184,7 @@ int file_merge_lines
 	vector_remove_and_destroy(&file->lines, pos.y);
 
 	file->dirty = 1;
+	file->has_dirty_line = 1;
 	prev_line->dirty = 1;
 
 	result_ok(result);
@@ -1223,6 +1192,8 @@ int file_merge_lines
 	return EIE_OK;
 }
 
+
+/// --- FILE_INDENT_CHAR ---
 int file_indent_a_line
 (
 	File* file, 
@@ -1230,33 +1201,8 @@ int file_indent_a_line
 	Result* result
 ) 
 {
-	if (!file) {
-		result_set_reason(result,
-			"file_indent_a_line: file is a null pointer");
-		result->type = ERROR_NULL_POINTER;
-
-		return EIE_FATAL_ERROR; 
-	}
-
 	Line* line = vector_get(&file->lines, y);
-
-	if (!line) {
-		result_set_reason(result,
-			"file_indent_a_line: line is invalid");
-		result->type = ERROR_NULL_POINTER;
-
-		return EIE_NOT_FATAL_ERROR;
-	}
-
 	u32string* line_text = &line->text;
-
-	if (!line_text) {
-		result_set_reason(result,
-			"file_indent_a_line: line_text is a null pointer");
-		result->type = ERROR_NULL_POINTER;
-
-		return EIE_NOT_FATAL_ERROR;
-	}
 
 	size_t tab_size = (file->use_spaces) ? file->tab_size : 1;
 
@@ -1264,7 +1210,7 @@ int file_indent_a_line
 	size_t new_size = tab_size + size;
 	uint32_t* new_text = malloc(new_size * sizeof(*new_text));
 
-	if (!new_text) {
+	if (!new_text && result) {
 		result_set_reason(result,
 			"file_indent_a_line: new_text is a null pointer");
 		result->type = ERROR_MALLOC;
@@ -1286,7 +1232,8 @@ int file_indent_a_line
 	u32string_replace_text_raw(line_text, new_text, new_size);
 
 	file->dirty = 1;
-	line->dirty = 1;
+	file->has_dirty_line = 1;
+	line->dirty = 1; // the tokens must change their inner positions
 
 	result_ok(result);
 
@@ -1294,6 +1241,7 @@ int file_indent_a_line
 }
 
 
+/// --- FILE_INDENT_SELECTION ---
 int file_indent_selection
 (
 	File* file,
@@ -1342,6 +1290,8 @@ int file_indent_selection
 	return ret;
 }
 
+
+/// --- FILE_UNINDENT_LINE ---
 int file_unindent_a_line
 (
 	File* file, 
@@ -1349,33 +1299,8 @@ int file_unindent_a_line
 	Result* result
 ) 
 {
-	if (!file) {
-		result_set_reason(result,
-			"file_unindent_a_line: file is a null pointer");
-		result->type = ERROR_NULL_POINTER;
-
-		return EIE_FATAL_ERROR; 
-	}
-
 	Line* line = vector_get(&file->lines, y);
-
-	if (!line) {
-		result_set_reason(result,
-			"file_unindent_a_line: line is a null pointer");
-		result->type = ERROR_NULL_POINTER;
-
-		return EIE_NOT_FATAL_ERROR;
-	}
-
 	u32string* line_text = &line->text;
-
-	if (!line_text) {
-		result_set_reason(result,
-			"file_unindent_a_line: line_text is a null pointer");
-		result->type = ERROR_NULL_POINTER;
-
-		return EIE_NOT_FATAL_ERROR;
-	}
 
 	size_t indent = u32string_get_indent(line_text, file->use_spaces);
 	size_t tab_size = (file->use_spaces) ? file->tab_size : 1;
@@ -1392,7 +1317,7 @@ int file_unindent_a_line
 	size_t new_size = size - indent + remaining_indent;
 	uint32_t* new_text = malloc(new_size * sizeof(*new_text));
 
-	if (!new_text) {
+	if (!new_text && result) {
 		result_set_reason(result,
 			"file_unindent_a_line: new_text is a null pointer");
 		result->type = ERROR_MALLOC;
@@ -1412,13 +1337,16 @@ int file_unindent_a_line
 	u32string_replace_text_raw(line_text, new_text, new_size);
 
 	file->dirty = 1;
-	line->dirty = 1;
+	file->has_dirty_line = 1;
+	line->dirty = 1; // the tokens must change their inner positions
 
 	result_ok(result);
 
 	return EIE_OK;  
 }
 
+
+/// --- FILE_UNINDENT_SELECTION---
 int file_unindent_selection
 (
 	File* file,
@@ -1499,15 +1427,8 @@ int file_unindent_selection
 }
 
 
+/// --- FILE_MOVE_LINE_UP ---
 int file_move_line_up(File* file, size_t y, Result* result) {
-	if (!file) {
-		result_set_reason(result,
-			"file_move_line_up: file is a null pointer");
-		result->type = ERROR_NULL_POINTER;
-
-		return EIE_FATAL_ERROR; 
-	}
-
 	if (y == 0) {
 		return EIE_NOT_AN_ERROR;
 	}
@@ -1522,26 +1443,16 @@ int file_move_line_up(File* file, size_t y, Result* result) {
 		return EIE_NOT_FATAL_ERROR;
 	}
 
-	Line* line = vector_get(&file->lines, y);
-	line->dirty = 1;
-
-	line = vector_get(&file->lines, y - 1);
-	line->dirty = 1;
+	file->dirty = 1;
 
 	result_ok(result);
 
 	return EIE_OK;
 }
 
+
+/// --- FILE_MOVE_LINE_DOWN ---
 int file_move_line_down(File* file, size_t y, Result* result) {
-	if (!file) {
-		result_set_reason(result,
-			"file_move_line_down: file is a null pointer");
-		result->type = ERROR_NULL_POINTER;
-
-		return EIE_FATAL_ERROR; 
-	}
-
 	if (y >= file->lines.size - 1) {
 		return EIE_NOT_AN_ERROR;
 	}
@@ -1556,12 +1467,6 @@ int file_move_line_down(File* file, size_t y, Result* result) {
 		return EIE_NOT_FATAL_ERROR;
 	}
 
-	Line* line = vector_get(&file->lines, y);
-	line->dirty = 1;
-
-	line = vector_get(&file->lines, y + 1);
-	line->dirty = 1;
-
 	file->dirty = 1;
 
 	result_ok(result);
@@ -1571,40 +1476,23 @@ int file_move_line_down(File* file, size_t y, Result* result) {
 
 
 /// --- COMMENT ---
-
 int file_comment_line
 (
 	File* file,
 	size_t y,
 	const char* comment_fmt,
-	ssize_t* move_cursor,
-	Result* result
+	ssize_t* move_cursor
 )
 {
-	if (!file) {
-		result_set_reason(result,
-			"file_comment_line: file is a null pointer");
-		result->type = ERROR_NULL_POINTER;
-
-		return EIE_FATAL_ERROR; 
-	}
-
 	int ret = EIE_OK;
 
 	u32string* line_text = file_get_line_text(file, y);
-
-	if (!line_text) {
-		result_set_reason(result,
-			"file_comment_line: line_text is a null pointer");
-		result->type = ERROR_NULL_POINTER;
-
-		return EIE_NOT_FATAL_ERROR;
-	}
 
 	if (u32string_is_empty(line_text)) {
 		return EIE_NOT_AN_ERROR;
 	}
 
+	// the tokens must change their inner positions
 	file_set_line_dirty(file, y);
 
 	size_t comment_fmt_size = strlen(comment_fmt);
@@ -1659,6 +1547,7 @@ int file_comment_line
 	u32string_free(&u32_comment_fmt);
 
 	file->dirty = 1;
+	file->has_dirty_line = 1;
 
 	return ret;
 }
@@ -1674,7 +1563,7 @@ static int all_lines_comment
 )
 {
 	size_t comment_fmt_size = strlen(comment_fmt);
-	size_t small;
+	size_t small = 0;
 	int all_lines = 1;
 
 	for (size_t i = start; i < end; i++) {
@@ -1841,6 +1730,9 @@ int file_comment_selection
 		sel->start.x += move_end_sel;
 	}
 
+	file->dirty = 1;
+	file->has_dirty_line = 1;
+
 	return ret;
 }
 
@@ -1992,6 +1884,7 @@ int file_delete_selection
 	}
 
 	file->dirty = 1;
+	file->has_dirty_line = 1;
 
 	selection_clear(sel);
 
@@ -2000,38 +1893,16 @@ int file_delete_selection
 	return EIE_OK;
 }
 
+
+/// --- COPY/PASTE ---
 int file_copy_selection
 (
-	File* file, 
+	const File* file, 
 	Clipboard* cb, 
 	Selection* sel,
 	Result* result
 ) 
 {
-	if (!file) {
-		result_set_reason(result,
-			"file_copy_selection: file is a null pointer");
-		result->type = ERROR_NULL_POINTER;
-
-		return EIE_FATAL_ERROR; 
-	}
-
-	if (!cb) { 
-		result_set_reason(result,
-			"file_copy_selection: cb is a null pointer");
-		result->type = ERROR_NULL_POINTER;
-
-		return EIE_FATAL_ERROR; 
-	}
-
-	if (!sel) {
-		result_set_reason(result,
-			"file_copy_selection: sel is a null pointer");
-		result->type = ERROR_NULL_POINTER;
-
-		return EIE_FATAL_ERROR;
-	}
-
 	if (!sel->active) {
 		return EIE_NOT_AN_ERROR;
 	}
@@ -2043,22 +1914,15 @@ int file_copy_selection
 		return EIE_NOT_AN_ERROR;
 	}
 
-	u32string* last_text = file_get_line_text(file, b.y);
-
-	if (!last_text) {
-		result_set_reason(result,
-			"file_copy_selection: last_text is a null pointer");
-		result->type = ERROR_NULL_POINTER;
-
-		return EIE_NOT_FATAL_ERROR;
-	}
-
-	cb->linewise = sel->linewise;
+	cb->linewise = sel->linewise; // not really used
 
 	size_t total_size = 0;
 
 	for (size_t y = a.y; y <= b.y; y++) {
-		u32string* line_text = file_get_line_text(file, y);
+		const u32string* line_text = file_get_line_text_const(
+			file, 
+			y
+		);
 
 		if (!line_text) {
 			result_set_reason(result,
@@ -2080,7 +1944,7 @@ int file_copy_selection
 
 	uint32_t* cb_text = malloc(total_size * sizeof(*cb_text));
 
-	if (!cb_text) {
+	if (!cb_text && result) {
 		result_set_reason(result,
 			"file_copy_selection: cb->text is a null pointer");
 		result->type = ERROR_NULL_POINTER;
@@ -2091,17 +1955,10 @@ int file_copy_selection
 	size_t pos = 0;
 
 	for (size_t y = a.y; y <= b.y; y++) {
-		u32string* line_text = file_get_line_text(file, y);
-
-		if (!line_text) {
-			result_set_reason(result,
-				"file_copy_selection: line_text is a null pointer");
-			result->type = ERROR_NULL_POINTER;
-
-			free(cb_text);
-
-			return EIE_NOT_FATAL_ERROR;
-		}
+		const u32string* line_text = file_get_line_text_const(
+			file, 
+			y
+		);
 
 		size_t start = (y == a.y) ? a.x : 0;
 		size_t end   = (y == b.y) ? b.x : u32string_size(line_text);
@@ -2131,7 +1988,7 @@ int file_copy_selection
 	return EIE_OK;
 }
 
-static int paste_inline(File* file, Clipboard* cb, Cursor* c) {
+static int paste_inline(File* file, const Clipboard* cb, Cursor* c) {
 	Line* line = vector_get(&file->lines, c->pos.y);
 
 	if (!line) {
@@ -2173,7 +2030,7 @@ static void insert_first_segment
 	File* file, 
 	size_t first_index, 
 	size_t size,
-	Clipboard* cb
+	const Clipboard* cb
 )
 {
 	Line* prefix = vector_get(&file->lines, first_index);
@@ -2194,7 +2051,7 @@ static void insert_middle_segment
 	size_t start,
 	size_t index,
 	size_t size,
-	Clipboard* cb
+	const Clipboard* cb
 )
 {
 	u32string new_text = u32string_from_raw_copy(
@@ -2233,7 +2090,7 @@ static void finish_last_line
 	File* file,
 	size_t start,
 	size_t last_index,
-	Clipboard* cb,
+	const Clipboard* cb,
 	Cursor* c
 )
 {
@@ -2283,7 +2140,7 @@ static void finish_last_line
 static int paste_multiline
 (
 	File* file, 
-	Clipboard* cb, 
+	const Clipboard* cb, 
 	Cursor* c,
 	Result* result
 ) 
@@ -2343,10 +2200,12 @@ static int paste_multiline
 	return EIE_OK;
 }
 
+
+/// --- MONSTER ---
 int file_paste_clipboard
 (
 	File* file, 
-	Clipboard* cb, 
+	const Clipboard* cb, 
 	Cursor* c,
 	Result* result
 ) 
@@ -2377,50 +2236,48 @@ int file_paste_clipboard
 
 
 	file->dirty = 1;
+	file->has_dirty_line = 1;
+
 	result_ok(result);
 
 	return ret;
 }
 
+
+/// --- SELECT ---
 int file_select_line
 (
-	File* file, 
+	const File* file, 
 	size_t y, 
 	Selection* sel,
-	Result* result
+	int select_line_selects_next
 ) 
 {
 	if (y >= file->lines.size) {
 		return EIE_NOT_FATAL_ERROR;
 	}
 
-	u32string* line = file_get_line_text(file, y);
-
-	if (!line) {
-		return EIE_NOT_FATAL_ERROR;
-	}
+	const u32string* line = file_get_line_text_const(file, y);
 
 	sel->active = 1;
 	sel->start.y = y;
 	sel->start.x = 0;
 
 	size_t lines = file->lines.size;
-	int select_after = (lines > 1 && y < lines - 1);
+	int select_after = (select_line_selects_next && 
+		lines > 1 && y < lines - 1);
 
 	sel->end = (select_after)
 		? (Position) { 0, y + 1 }
 		: (Position) { u32string_size(line), y };
-
-	result_ok(result);
 
 	return EIE_OK;
 }
 
 int file_select_all_file
 (
-	File* file, 
-	Selection* sel, 
-	Result* result
+	const File* file, 
+	Selection* sel
 ) 
 {
 	if (file->lines.size == 0) {
@@ -2429,7 +2286,7 @@ int file_select_all_file
 		return EIE_NOT_AN_ERROR;
 	}
 
-	u32string* last_line_text = file_get_line_text(
+	const u32string* last_line_text = file_get_line_text_const(
 		file, 
 		file->lines.size - 1);
 
@@ -2444,8 +2301,6 @@ int file_select_all_file
 	sel->end.x = last_size;
 	sel->start.y = 0;
 	sel->end.y = file->lines.size - 1;
-
-	result_ok(result);
 
 	return EIE_OK;
 }

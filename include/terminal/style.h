@@ -83,7 +83,6 @@ struct ui {
 	struct style line_number;
 	struct style line_number_current;
 	struct style status_bar;
-	struct style spaces_and_tabs;
 	struct window_color window_color;
 
 	char* cursor_style; // 5 + '\0'

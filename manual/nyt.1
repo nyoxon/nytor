@@ -1,0 +1,1031 @@
+.TH NYTOR 1 "13 August 2026" "nytor 1.0" "User Commands"
+
+.SH NAME
+nytor \- terminal text editor
+
+.SH SYNOPSIS
+.B nyt
+.RI [ options ] " file1 file2 ..."
+
+.SH DESCRIPTION
+.B nyt
+is a terminal-based text editor.
+
+.SH OPTIONS
+.TP
+.B \-h, \-\-help
+Display the help message.
+
+.TP
+.B \-\-debug
+Enables debug mode.
+
+.TP
+.B \-v, \-\-version
+Display version information.
+
+.SH FILES
+.TP
+The files really need to be files, directories are not supported.
+
+.SH MOUSE INTERACTION
+.TP
+You can use the LEFT/RIGHT click to move the cursor around and the
+.br
+.B
+SCROLL to move up or down.
+
+.SH DEFAULT KEYBINDS
+.TP
+.B ARROW_UP 
+Move the cursor up.
+
+.TP
+.B ARROW_DOWN 
+Move the cursor down.
+
+.TP
+.B ARROW_RIGHT 
+Move the cursor right.
+
+.TP
+.B ARROW_LEFT 
+Move the cursor left.
+
+.TP
+.B Ctrl\-S
+Save the current file.
+
+.TP
+.B Ctrl\-Q
+QUIT the editor.
+
+.TP
+.B Alt\-Q
+FORCE QUIT the editor.
+
+.TP
+.B Ctrl\-F
+FIND a PATTERN (sensitive case, has SELECTION_BEHAVIOR).
+
+.TP
+.B Ctrl\-R
+SELECT a word or find the next MATCH.
+
+.TP
+.B Ctrl\-G
+GOTO a line or a file.
+.br
+.B goto -> goes to the first line.
+.br
+.B goto numb > 0 -> goes to line number "numb"
+.br
+.B goto 0 -> goes to the last line.
+.br
+.B goto numb > file size -> goes to the last line.
+.br
+.B goto PATTERN -> goes to the file with name equals to PATTERN.
+
+.TP
+.B Ctrl\-Space Start or end a SELECTION.
+.br
+.B Use the arrows in order to expand the selection.
+.br
+.B Any command that changes the cursor position also expand the selection.
+.br
+.B By default, you can also start/end a selection using the
+.br
+.B MOUSE RIGHT CLICK and expand it using the MOUSE LEFT CLICK.
+.br
+.B You can change the behavior of the MOUSE LEFT CLICK in the config file.
+.br
+.B If line numbering is being rendered and you click a line number,
+.br
+.B the corresponding line will be selected.
+
+.TP
+.B Ctrl\-A
+SELECT all the file.
+
+.TP
+.B Ctrl\-L
+SELECT a line.
+
+.TP
+.B Alt\-D
+MOVE the cursor to the beginning of the line.
+
+.TP
+.B Ctrl\-D
+MOVE the cursor to the end of the line.
+
+.TP
+.B Ctrl\-Shift\-ARROW_RIGHT
+MOVE the cursor right between words.
+
+.TP
+.B Ctrl\-Shift\-ARROW_LEFT
+MOVE the cursor left between words.
+
+.TP
+.B Ctrl\-Alt\-ARROW_RIGHT
+MOVE the cursor right between fullwords.
+
+.TP
+.B Ctrl\-Alt\-ARROW_LEFT
+MOVE the cursor left between fullwords.
+
+.TP
+.B Ctrl\-Shift\-ARROW_UP
+MOVE selection up.
+
+.TP
+.B Ctrl\-Shift\-ARROW_DOWN
+MOVE selection down.
+
+.TP
+.B Ctrl\-ARROW_RIGHT
+SCROLL right.
+
+.TP
+.B Ctrl\-ARROW_LEFT
+SCROLL left.
+
+.TP
+.B Ctrl\-ARROW_UP
+SCROLL up.
+
+.TP
+.B Ctrl\-ARROW_DOWN
+SCROLL down.
+
+.TP
+.B Alt\-ARROW_UP
+SCROLL TERMINAL_SIZE up.
+
+.TP
+.B Alt\-ARROW_DOWN
+SCROLL TERMINAL_SIZE down.
+
+.TP
+.B Ctrl\-U
+DELETE from the cursor left.
+
+.TP
+.B Alt\-U
+DELETE from the cursor right.
+
+.TP
+.B Ctrl\-P
+INDENT a line or selection (has SELECTION_BEHAVIOR).
+
+.TP
+.B Ctrl\-O
+UNINDENT a line or selection (has SELECTION_BEHAVIOR).
+
+.TP
+.B Ctrl\-K
+COMMENT or uncomment a line or selection (has SELECTION/PLUGIN BEHAVIOR).
+
+.TP
+.B Ctrl\-C
+COPY a selection into the clipboard.
+
+.TP
+.B Ctrl\-V
+PASTE the clipboard.
+
+.TP
+.B Ctrl\-X
+REPLACE a PATTERN with another PATTERN (has SELECTION_BEHAVIOR).
+.br
+.B
+If the second PATTERN is empty, the matches of the first one will be deleted.
+
+.TP
+.B Ctrl\-N
+Open the prompt command.
+
+.TP
+.B Ctrl\-B
+Create a PTY.
+
+.TP
+.B Alt\-B
+SUSPEND the program.
+
+.TP
+.B Ctrl\-T
+Create a new, untitled and empty file.
+
+.TP
+.B Ctrl\-W
+Close the current file.
+
+.TP
+.B Alt\-W
+Force close the current file.
+
+.TP
+.B Alt\-ARROW_LEFT
+Change to the prev file.
+
+.TP
+.B Alt\-ARROW_RIGHT
+Change to the next file.
+
+.TP
+.B Alt\-T
+Render a visual representation of the spaces and tabs.
+
+.TP
+.B Ctrl\-Z
+Undo the last UNDOABLE action.
+
+.TP
+.B Ctrl\-Y
+Redo the last readoable action.
+
+.SH UNDOABLE ACTIONS
+Practically any (internal) operation that modifies the file is considered
+.br
+undoable/redoable.
+
+.SH PATTERN FORMAT
+.TP
+If the pattern has spaces, delimit it in quotation marks.
+.TP 
+If the pattern does not have any spaces, the use of quotation marks is optional.
+.TP
+If the pattern has quotation marks (") or (\\), escape these characters
+.br 
+.B
+using \\ and you also need to delimit it using quotation marks.
+.TP
+Example: main, "main", "main (void)", "main\\"", "\\\\main\\""
+
+.SH PROMPT OR STATUS BAR
+.B
+By using the ACTION_OPEN_CMD keybind (Ctrl\-N by default), a prompt opens on the last line of the file.
+.br
+.TP
+You can write a lot of commands. Use the 'help' command to see all of
+them.
+.TP
+Some of them essentially replicate what certain keybinds already
+.br
+.B
+do, but with a different interface, while other are exclusive to the prompt.
+.br
+.TP
+You can move the cursor within the prompt in basically, but no equal,
+.br
+.B
+the same way as in the editor.
+.TP
+You can use the ACTION_QUIT (Ctrl\-Q by default) to close the prompt.
+.TP
+Some system messages are presented from the prompt; they will
+.br
+.B
+disapper as soon as you interact with the editor.
+.TP
+There is an AUTOCOMPLETE system within the prompt and you can use it
+.br
+.B
+pressing TAB. If there is more than one option, a WINDOW will be
+.br.
+.B
+created containing all of them.
+.br
+.B
+If you try to AUTOCOMPLETE the first word, the program will try
+.br
+.B
+to complete a prompt command; otherwise, it will try to complete
+.br
+.B
+a file or directory.
+
+.SH WINDOW
+.TP
+Some commands may open an interactive window in the editor containing
+.br
+.B
+content related to the command that opened it.
+.br
+.TP
+You can move the cursor within that window in basically, but no equal,
+.br
+.B
+the same way as in the editor.
+.TP
+You can select a line (option) by pressing SPACE, ENTER, TAB or
+.br
+.B
+MOUSE LEFT CLICK (in the last case, if the line is not selected
+.br
+.B
+beforehand, a double-click will be necessary.
+.TP
+You can close a window using the ACTION_QUIT (Ctrl\-Q default) keybind.
+
+
+.SH SELECTION BEHAVIOR
+.TP
+Some commands have their range limited or behavior changed if there is an active selection. They are:
+.br
+.B
+FIND
+.br
+.B
+REPLACE
+.br
+.B
+INDENT
+.br
+.B
+UNINDENT
+.br
+.B
+COMMENT
+.br
+.B
+SELECT_LINE
+
+.SH PLUGIN BEHAVIOR
+.TP
+Some commands only work if there is a language plugin being used. They are:
+.br
+.B
+COMMENT
+.br
+.B
+BLOCK (cmd)
+
+
+.SH FILES
+.TP
+.I ~/.config/nytor/
+User configuration directory.
+
+.SH CONFIGURATION
+
+.TP
+This section contains information to help you create and configure
+.br
+a configuration file.
+.br
+.SS ~/.config/nytor/
+.br
+There is only one configuration file for the entire editor, namely:
+.br
+"config.ny" which must be present in ~/.config/nytor/
+.br
+That directory is the directory where themes, plugins and the config file
+.br
+are located:
+.br
+.TP
+/home/user/.config/nytor/
+.br
+├── config.ny
+.br
+├── plugins
+.br
+│	└── languages
+.br
+└── themes
+.br
+    ├── default
+.br
+.br
+.SS FILE FORMAT
+.TP
+If config.ny exists, it must have exactly this format:
+.br
+.br
+┌────────────────┐
+.br
+│[ui]            │
+.br
+│*** configs *** │
+.br
+│[keybinds]      │
+.br
+│*** keybinds ***│
+.br
+│[plugins]       │
+.br
+│*** language ***│
+.br
+└────────────────┘
+.br
+.TP
+If one of the sections or config/keybind within them is omitted,
+.br
+the corresponding default value will be used
+.br
+.SS CONFIGS AND KEYBINDS FORMAT
+.br
+.SS UI
+.br
+The format of a config within the [ui] section is:
+.br
+.TP
+config = value
+.br
+.TP
+Here are all the options and their possible values:
+.br
+.TP
+shell = "auto"/"name_of_shell"
+.br
+	defines the shell to be used when invoking the 'terminal'
+.br
+	command within the editor.
+.br
+	if the value is "auto", the program will attempt to
+.br
+	use the user's default shell (ie, the value of $SHELL)
+.br
+		default value = "auto"
+.br
+.TP
+theme = "name_of_theme"
+.br
+	the color palette that will be used inside the program
+.br
+	you can temporarily change it using the 'themes' command
+.br
+		default = "default"
+.TP
+tab_size = value
+.br
+	default tab_size used in the program
+.br
+	you can temporarily change it using the 'set' command
+.br
+		default = 4
+.TP
+auto_save_quit = true/false
+.br
+	defines whether the editor saves the file automatically
+.br
+	see the man page of the 'quit' and 'quits' command
+.br
+		default = false
+.TP
+use_spaces = true/false
+.br
+	defines whether the tab inserted will consist of spaces
+.br
+	or tabs
+.br
+	you can temporarily change it using the 'set' command
+.br
+		default = false
+.TP
+line_numbers = true/false
+.br
+	defines whether the line numbering will be rendered
+.br
+	you can temporarily change it using the 'set' command
+.br
+		default = true
+.TP
+show_tabs = true/false
+.br
+	defines whether a visual representation of the spaces and
+.br
+	tabs will be rendered
+.br
+	you can temporarily change it using the 'set' command
+.br
+		default = false
+.TP
+cursor_style = 
+.br
+default
+.br
+steady_bar
+.br
+blinking_bar
+.br
+steady_block
+.br
+blinking_block
+.br
+steady_underline
+.br
+blinking_underline
+.br
+	the cursor style that will be used insed the program
+.br
+		default = default
+.TP
+cursor_follow_scroll = true/false
+.br
+	defines whether the cursor will be delimited by the terminal
+.br
+	while scrolling
+.br
+		default = true
+
+.TP
+select_line_selects_next = true
+.br
+	defines whether the select line operation should select the start
+.br
+	of the next line
+.br
+		default = true
+
+.TP
+left_click_end_selection = true/false
+.br
+	defines whether the mouse button left click will end an active
+.br
+	selection
+.br
+		default = false
+.TP
+background_fills_all = true/false
+.br
+	defines whether the background color of a theme should try
+.br
+	to fill all the terminal
+.br
+		default = false
+.TP
+use_autocomplete = true/false
+.br
+	defines whether the inner autocomplete system should be used
+.TP
+Note : "change temporarily" means that the changes will be discarded when
+.br
+closing the program.
+.SS KEYBINDS
+.br
+The format of a keybind is:
+.TP
+action = "keybind", where keybind = "mod1 + mod2 + ... + key/arrow"
+.br
+.TP
+key must be an ascii character with the exception of escapes
+.TP
+arrow must be an arrow direction (right/left/up/down)
+.TP
+mod must be ctrl/shift/alt
+.TP
+These are all the possible actions:
+.br
+save
+.br
+quit
+.br
+quit_forced
+.br
+find
+.br
+goto
+.br
+selection
+.br
+show_tabs
+.br
+move_start_line
+.br
+move_end_line
+.br
+select_line
+.br
+select_all
+.br
+indent
+.br
+unindent
+.br
+comment
+.br
+copy
+.br
+paste
+.br
+match
+.br
+suspend
+.br
+terminal
+.br
+cmd
+.br
+replace
+.br
+undo
+.br
+redo
+.br
+del_from_cursor_left
+.br
+del_from_cursor_right
+.br
+next_file
+.br
+prev_file
+.br
+close_file
+.br
+close_file_forced
+.br
+new_file
+.br
+selection_move_up
+.br
+selection_move_down
+.br
+move_word_right
+.br
+move_word_left
+.br
+move_fullword_right
+.br
+move_fullword_left
+.br
+scroll_right
+.br
+scroll_left
+.br
+scroll_up
+.br
+scroll_down
+.br
+scroll_terminal_up
+.br
+scroll_terminal_down
+.TP
+Example: scroll_up = "ctrl+t"
+
+.SS PLUGINS
+For now, there are only language plugins.
+.TP
+In order to add a language plugin:
+.br
+	language = lang_name
+.TP
+An warning message will be displayed after starting the program
+.br
+if any kind of error loading the plugin has occured.
+.TP
+Unlike other configurations, you can repeat the 'language' option.
+.br
+Indeed, that is how you add multiple language plugins:
+.br
+	language = lang1
+.br	
+	language = lang2
+.TP
+Whenever the editor opens a new file, the program will attempt
+.br
+to decide the language plugin to be used based on the file extension
+.br
+and on the reserved names defined by the plugin, stopping at the
+.br
+first valid one.
+.TP
+The note above is important because someone might put:
+.br
+language = c
+.br
+language = cpp
+.TP
+To find that the plugin used when opening a .h file is the c one.
+.TP
+You can see which plugin the editor is using for the actual file
+.br
+using the 'show' command.
+.TP
+You can change the plugin the editor uses for the actual file
+.br
+using the 'set' command.
+.TP
+Note: see examples of config.ny in github.com/nyoxon/nytor";
+
+.SH THEMES
+This section contain information to help you create a theme file.
+.TP
+All theme files must be in /home/user/.config/nytor/themes and you
+.br
+can use the 'themes' command to see the available themes and change
+.br
+the current one temporarily. To make the theme permanent, you must
+.br
+place it in config.ny
+.TP
+Suppose you create the theme file "my_theme":
+.TP
+/home/user/.config/nytor/themes/
+.br
+├── my_theme
+.br
+.TP
+The file must contain the following:
+.br
+┌─────────────────────┐
+.br
+│name = "my_theme"    │
+.br
+│[ui]                 │
+.br
+│*** ui colors ***    │
+.br
+│[syntax]             │
+.br
+│*** syntax colors ***│
+.br
+└─────────────────────┘
+.TP
+Note: "name" must be exactly the filename.
+.SS COLOR FORMAT
+.TP
+A color is composed of:
+.br
+fg (the color of the text)
+.br
+bg (the background color of the text)
+.br
+modifiers (italic, bold, reverse etc)
+.TP
+A color has the following format:
+.br
+color = { fg = "RGB/ANSI", bg = "RGB/ANSI", mod1, mod2, ... }
+.TP
+For a RGB color, you have two formats:
+.br
+\- (r, g, b), where 0 <= r, g, b <= 255
+.br
+\- #rrggbb, a hexadecimal value where the '#' must be written
+.br
+Both formats must be in quotation marks.
+.TP
+For ANSI color, you have the following options:
+.br
+black
+.br
+red
+.br
+green
+.br
+yellow
+.br
+blue
+.br
+magenta
+.br
+cyan
+.br
+white
+.br
+bright_black
+.br
+bright_red
+.br
+bright_green
+.br
+bright_yellow
+.br
+bright_blue
+.br
+bright_magenta
+.br
+bright_cyan
+.br
+bright_white
+.br
+default (terminal color)
+.br
+You also need to put the color between quotation marks.
+.TP
+For modifiers you have:
+.br
+bold
+.br
+italic
+.br
+underline
+.br
+reverse
+.br
+dim		(the terminal emulator may ignore)
+.br
+You don't need to put the modifier between quotation marks.
+.TP
+Example of a valid color: normal = { fg = "red", bg = "#123456", italic, bold }
+.TP
+Note: if fg or bg component is omitted, a default color will be used.
+.TP
+Note: if modifier component is omitted, no modifier will be used.
+.SS UI
+.TP
+These are all the colors you can change for the editor UI:
+.br
+normal (color of the normal text and background)
+.br
+selection
+.br
+line_number
+.br
+line_number_current
+.br
+status_bar
+.br
+spaces_and_tabs
+.br
+window_border
+.br
+window_text
+.br
+window_current_line
+.TP
+Note: if a color is omitted, a default color will be used.
+.SS SYNTAX
+.TP
+These colors will be used when using a lexer plugin:
+.br
+normal
+.br
+keyword
+.br
+comment
+.br
+preprocessor
+.br
+type
+.br
+lib_type
+.br
+posix_type
+.br
+constant
+.br
+number
+.br
+string
+.br
+char
+.br
+operator
+.br
+punctuation
+.br
+function
+.br
+method_or_attrib
+.br
+lib_function
+.br
+posix
+.br
+specifier
+.TP
+Note: if a color is omitted, a default color will be used.
+.TP
+See examples of theme files in github.com/nyoxon/nytor
+
+.SH LANGUAGE PLUGINS
+
+It is recommended to read this section alongside the files
+.br
+nytor/include/plugins/plugin.h and nytor/include/plugins/language_syntax.h
+.br
+and some internal implementation (ex: nytor/plugins/c/lexer/c_lexer.*)
+.br
+(github.com/nyoxon/nytor)
+
+.TP
+A language plugin defines:
+.br
+\- The extensions and reserved names.
+.br
+\- Auto indentation
+.br
+\- Language syntax pairs.
+.br
+\- Language comment fmt (single comment).
+.br
+\- A lexer that handles syntax highlighting.
+.br
+\- What is a word.
+
+.TP
+At this stage of the program, it's worth noting that the API was
+.br
+designed primarily to support languages that have syntax
+.br
+similar to C, though creating a plugin for a interpreted or high-level
+.br
+language like Python is not impossible.
+
+.SS WHAT IS MANDATORY
+.TP
+The only thing that needs to be public in your implementation is a function
+.br
+that returns a pointer to a plugin 'object':
+
+.TP
+typedef const struct language_plugin* (*plugin_init_t)(void);
+
+.TP
+For example, in the mylang plugin:
+.TP
+const struct language_plugin *plugin_init(void) {return &mylang_plugin;}
+
+.TP
+However, internally you must also have the following structs implemented:
+.TP
+struct pair {
+.br
+	char open;
+.br
+	char close;
+.br
+	int auto_indent;
+.br
+	int auto_complete;
+.br
+};
+
+.TP
+struct language_rules {
+.br
+	const struct pair* pairs;
+.br
+	size_t pair_count;
+.br
+	const char* comment_fmt;
+.br
+	int auto_indent;
+.br
+	IsWordChar is_word_char;
+.br
+};
+
+.TP
+struct language_plugin {
+.br
+	const char* name;
+.br
+	const char* const* extensions;
+.br
+	size_t extension_count;
+.br	
+	const char* const* reserved_filenames;
+.br
+	size_t reserved_filename_count;
+.br
+	struct lexer *(*create_lexer)(void);
+.br
+	const struct language_rules* rules;
+.br
+};
+
+.TP
+If you will implement a lexer, you also need to implement this:
+.TP
+struct lexer {
+.br
+	size_t (*tokenize_line)(
+.br
+		struct lexer* lexer,
+.br
+		const uint32_t* line,
+.br
+		size_t len,
+.br
+		struct token* tokens,
+.br
+		size_t max_tokens,
+.br
+		enum lex_state state_in,
+.br
+		enum lex_state* state_out
+.br
+	);
+.br
+	void (*destroy)(struct lexer*);
+.br
+	void (*reset)(struct lexer*);
+.br
+};
+.TP
+From this point on, you can implement the plugin (how to detected
+.br
+keywords, types, functions etc) pretty much however
+.br
+you like.
+
+.SH AUTHOR
+nyoxon
+
+.SH LICENSE
+GNU General Public License version 3.

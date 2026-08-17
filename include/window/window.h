@@ -12,7 +12,8 @@ typedef struct Window Window;
 
 typedef enum {
 	WINDOW_KEEP_OPEN,
-	WINDOW_CLOSE
+	WINDOW_CLOSE,
+	WINDOW_QUIT_PROGRAM,
 } WindowResult;
 
 typedef WindowResult (*WindowSelectCallback) (
@@ -27,18 +28,20 @@ typedef enum {
 typedef struct {
 	Position pos;
 	WindowPosType pos_type;
+
 	float sw; 
 	float sh;
+
 	TerminalSize tsize;
 	size_t tab_size;
+	
 	WindowSelectCallback on_select;
 } WindowOptions;
 
 struct Window {
 	Position pos;
 
-	size_t width; size_t height;
-	float sw; float sh;
+	float sw; float sh; // relative values
 
 	size_t tab_size;
 
