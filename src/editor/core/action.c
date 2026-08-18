@@ -2321,6 +2321,8 @@ void editor_operation_replace
 		);
 	}
 
+	file_set_has_dirty_line(&editor->actual_file->file);
+
 	size_t pattern_size = u32string_size(&op->replace.old_text);
 	size_t text_size = u32string_size(&op->replace.new_text);
 

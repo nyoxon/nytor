@@ -2686,7 +2686,10 @@ int editor_handle_cmd
 
 				goto cleanup;
 			}
-
+			
+			editor->actual_file->tokenized = 1;
+			editor_create_syntax(editor);
+						
 			if (editor->config.use_autocomplete &&
 				!editor->actual_file->readonly) 
 			{
@@ -2826,7 +2829,7 @@ int editor_handle_cmd
 	if (strcmp(words[0], files.name) == 0) {
 		WindowOptions options = {
 			.pos_type = WINDOWPOS_CENTRALIZED,
-			.sw = 0.2,
+			.sw = 0.5,
 			.sh = 0.5,
 			.tsize = editor->tsize,
 			.tab_size = editor->config.tab_size,
