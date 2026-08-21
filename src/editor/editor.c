@@ -103,12 +103,11 @@ int editor_init
 	/// --- CREATE PROTOTYPES ---
 	if (!filenames) {
 		EditorFileOptions options = {
-			.filename = NULL,
+			.path = NULL,
 			.readonly = 0,
 			.default_tab_size = editor->config.tab_size,
 			.default_use_spaces = editor->config.use_spaces,
-			.inotify_fd = editor->inotify_fd,
-			.use_autocomplete = editor->config.use_autocomplete
+			.inotify_fd = editor->inotify_fd
 		};
 
 		EditorFile ef = editor_file_prototype(&options);
@@ -127,12 +126,11 @@ int editor_init
 			}
 
 			EditorFileOptions options = {
-				.filename = filenames[i],
+				.path = filenames[i],
 				.readonly = 0,
 				.default_tab_size = editor->config.tab_size,
 				.default_use_spaces = editor->config.use_spaces,
-				.inotify_fd = editor->inotify_fd,
-				.use_autocomplete = editor->config.use_autocomplete
+				.inotify_fd = editor->inotify_fd
 			};
 
 			EditorFile ef = editor_file_prototype(&options);
@@ -467,21 +465,21 @@ void editor_check_inotify(Editor* editor) {
 }
 
 
-ssize_t editor_has_filename(const Editor* editor, const char* filename) {
+ssize_t editor_has_file(const Editor* editor, const char* path) {
 	for (size_t i = 0; i < editor->files.size; i++) {
 		const EditorFile* ef = vector_get_const(&editor->files, i);
 
 		if (ef->type == EDITOR_FILE_PROTOTYPE) {
-			if (filename && 
-				strcmp(ef->proto_data.options.filename, filename) == 0)
+			if (path && 
+				strcmp(ef->proto_data.options.path, path) == 0)
 			{
 				return i;
 			}
 		}
 
 		else {
-			if (ef->file.filename && filename &&
-				strcmp(ef->file.filename, filename) == 0)
+			if (ef->file.path && path &&
+				strcmp(ef->file.path, path) == 0)
 			{
 				return i;
 			}
@@ -489,7 +487,7 @@ ssize_t editor_has_filename(const Editor* editor, const char* filename) {
 
 
 		if (ef->type == EDITOR_FILE_LOADED && 
-			!ef->file.filename && !filename) 
+			!ef->file.path && !path) 
 		{
 			return i;
 		}
@@ -623,16 +621,76 @@ size_t get_gutter_width(size_t line_count) {
 	return digits + 1;	
 }
 
-void editor_prompt_init(Editor* editor) {
-	if (editor->actual_file->file.filename) {
-		prompt_init(
-			&editor->status_bar, 
-			editor->actual_file->file.filename, 
-			PT_INFO);
+ssize_t editor_has_equal_filename
+(
+	const Editor* editor, 
+	const char* filename,
+	size_t index
+) 
+{
+	if (!filename) {
+		return -1;
 	}
+	
+	for (size_t i = 0; i < editor->files.size; i++) {
+		if (i == index) {
+			continue;
+		}
+		
+		const EditorFile* ef = vector_get_const(
+			&editor->files,
+			i
+		);
+		
+		if (ef->type == EDITOR_FILE_PROTOTYPE)
+		{
+			char name[PATH_MAX_LENGTH];
+			
+			get_filename_after_last_slash(
+				name,
+				ef->proto_data.options.path
+			);
+			
+			if (strcmp(name, filename) == 0) {
+				return i;
+			}
+		}
+		
+		else {
+			if (ef->file.filename &&
+				strcmp(ef->file.filename, filename) == 0)
+			{
+				return i;
+			}
+		}
+	}
+	
+	return -1;
+}
 
-	else {
+void editor_prompt_init(Editor* editor) {
+	assert(editor->actual_file->type != EDITOR_FILE_PROTOTYPE);
+	
+	if (!editor->actual_file->file.filename) {
 		prompt_init(&editor->status_bar, "untitled", PT_INFO);
+	}
+	
+	else {
+		ssize_t index = editor_has_equal_filename(
+			editor,
+			editor->actual_file->file.filename,
+			editor->actual_file_index
+		);
+		
+		const char* name = (index >= 0)
+			? editor->actual_file->file.path
+			: editor->actual_file->file.filename;
+		
+		prompt_init(
+			&editor->status_bar,
+			name,
+			PT_INFO
+		);
 	}
 
 	if (editor->actual_file->internal) {
@@ -710,15 +768,15 @@ void editor_clamp_cursor_to_view(Editor* editor) {
 	}
 }
 
-const struct language_plugin* editor_get_language(Editor* editor) {
+const struct language_plugin* editor_get_language(const Editor* editor) {
 	return editor->actual_file->language;
 }
 
-const struct lexer* editor_get_lexer(Editor* editor) {
+const struct lexer* editor_get_lexer(const Editor* editor) {
 	return editor->actual_file->lexer;
 }
 
-const struct language_rules* editor_get_rules(Editor* editor) {
+const struct language_rules* editor_get_rules(const Editor* editor) {
 	if (!editor->actual_file->language) {
 		return NULL;
 	}
@@ -726,7 +784,7 @@ const struct language_rules* editor_get_rules(Editor* editor) {
 	return editor->actual_file->language->rules;
 }
 
-IsWordChar editor_get_IsWordChar(Editor* editor) {
+IsWordChar editor_get_IsWordChar(const Editor* editor) {
 	if (!editor_get_rules(editor)) {
 		return is_utf_word_char;
 	}
@@ -737,207 +795,5 @@ IsWordChar editor_get_IsWordChar(Editor* editor) {
 
 	else {
 		return editor->actual_file->language->rules->is_word_char;
-	}
-}
-
-void editor_update_word_frequency
-(
-	Editor* editor,
-	const uint32_t* word,
-	size_t size,
-	ssize_t increment
-)
-{
-	if (size == 0 || !editor->actual_file->words.root) {
-		return;
-	}
-
-	if (increment > 0) {
-		trie_ninsert(
-			&editor->actual_file->words, 
-			word, 
-			size,
-			increment
-		);
-	}
-
-	else if (increment < 0) {
-		increment *= -1;
-		trie_nremove(
-			&editor->actual_file->words, 
-			word, 
-			size,
-			increment
-		);
-	}
-
-	if (increment != 0) {
-		if (editor->debug_mode) {
-			log_write(&editor->log, "(update_frequency) words count: %zu", 
-				trie_count(&editor->actual_file->words));
-		}		
-	}
-}
-
-
-/*
-I thought a lot about how to insert and remove words from the
-trie and discovered that if, before any insert/delete operation,
-you decrement the entire line and then increment it after the op, the
-word frequencies become correct.
-
-EX:
-
-line before: "asd bsd csd"
-
-asd -= 1, bsd -= 1, csd -=1
-
-line after: "as d bsd csd"
-
-as += 1,
-d += 1,
-bsd += 1 (not changed)
-csd +=1 (not changed)
-
-
-This also works when you change the frequency using specific functions:
-
-line before: "asd bsd csd"
-
-asd -= 1, bsd -= 1, csd -=1
-
-line after (replace "csd"): "asd bsd ksd "
-
-ksd += 1
-asd += 1 (not changed)
-bsd +=1 (not changed)
-
-if you add a non-word char:
-
-line before: "asd bsd csd"
-
-ksd -= 1
-asd -= 1
-bsd -=1
-
-line after: "asd bsd ksd "
-
-ksd += 1 (not changed)
-asd += 1 (not changed)
-bsd +=1  (not changed)
-
-
-
-Of course, that trick comes at a cost, more
-specific, O(line_size), though it's not a major
-issue unless you're dealing with very long lines
-(which generally isn't the case during normal editor usage)
-
-
-FIXME:
-Nonetheless 😞, there is a case where a word should be inserted/removed
-into the trie but isn't. That happens exactly when the user types
-a word but does not trigger any of the internal program mechanisms
-used to insert/delete a word
-
-
-EXAMPLE 1:
-
-line before: "asd|"
-
-*user types manually "bsd"*
-
-line after: "asd bsd|"
-
-*user moves the cursor up*
-
-result: "bsd" will not enter the trie, because moving the cursor is
-not a trigger
-
-EXAMPLE 2:
-
-line before: "asd |"
-
-*user types manually "bsd" inside the last word*
-
-line after: "absd|sd "
-
-*user moves the cursor up*
-
-result: "absdsd" will not enter the trie and "asd" will
-not be removed
-*/
-
-void editor_increment_line_freq(Editor* editor, size_t y) {
-	const u32string* text = file_get_line_text_const(
-		&editor->actual_file->file,
-		y
-	);
-
-	size_t size = u32string_size(text);
-
-	if (size == 0) {
-		return;
-	}
-
-	IsWordChar is_word = editor_get_IsWordChar(editor);
-
-	size_t x = 0;
-
-	while (x < size) {
-		size_t start = x;
-
-		while (x < size && is_word(u32string_char(text, x))) {
-			x++;
-		}
-
-		const uint32_t* word = 
-			u32string_into_ptr_const(text) + start;
-
-		editor_update_word_frequency(
-			editor,
-			word,
-			x - start,
-			1
-		);
-
-		x++;
-	}
-}
-
-void editor_decrement_line_freq(Editor* editor, size_t y) {
-	const u32string* text = file_get_line_text_const(
-		&editor->actual_file->file,
-		y
-	);
-
-	size_t size = u32string_size(text);
-
-	if (size == 0) {
-		return;
-	}
-
-	IsWordChar is_word = editor_get_IsWordChar(editor);
-
-	size_t x = 0;
-
-	while (x < size) {
-		size_t start = x;
-
-		while (x < size && is_word(u32string_char(text, x))) {
-			x++;
-		}
-
-		const uint32_t* word = 
-			u32string_into_ptr_const(text) + start;
-
-		editor_update_word_frequency(
-			editor,
-			word,
-			x - start,
-			-1
-		);
-
-		x++;
 	}
 }

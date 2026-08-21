@@ -15,7 +15,6 @@
 #include "util/types/cursor.h"
 #include "util/types/clipboard.h"
 #include "util/types/selection.h"
-#include "util/types/trie.h"
 #include "plugins/plugin.h"
 #include "plugins/language_syntax.h"
 
@@ -81,6 +80,7 @@
 // for more informations on how the program handles permissions
 // and permission changes.
 typedef struct {
+	char* path;
 	char* filename; 	// must be freed
 	Vector lines; 		// must be freed
 
@@ -127,11 +127,9 @@ typedef int (*IsWordChar)(uint32_t c);
 
 
 typedef struct {
-	const char* filename;
+	const char* path;
 	size_t tab_size;
 	int use_spaces;
-	Trie* trie;
-	IsWordChar is_word_char;
 } FileOptions;
 
 void file_init(File* file);
@@ -152,10 +150,16 @@ int file_open
 void file_free(File* file);
 
 
+// set the file's path and filename
+void file_set_name(File* file, const char* path, int destroy);
+
+
 // must be used only if the lexer exists
 // iterates through the lines and calculate tokens
 // must be used just after file_open
 void file_create_tokens(File* file, struct lexer* lexer);
+
+void file_destroy_tokens(File* file);
 
 
 // similar to file_create_tokens, but used
@@ -174,8 +178,6 @@ void file_recalculate_tokens
 void file_sync
 (
 	File* file, 
-	Trie* trie, 
-	IsWordChar is_word_char,
 	Result* result
 );
 

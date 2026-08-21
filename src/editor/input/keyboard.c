@@ -487,25 +487,18 @@ static int editor_handle_open_delimiters(Editor* editor, uint32_t key) {
 	const struct language_rules* rules = (editor->actual_file->language) ?
 		editor->actual_file->language->rules : NULL;
 
-	if (editor->config.use_autocomplete) {
-		editor_decrement_line_freq(
-			editor,
-			editor->cursor.pos.y
-		);
-	}
+	// if (editor->config.use_autocomplete) {
+	// 	editor_decrement_line_freq(
+	// 		editor,
+	// 		editor->cursor.pos.y
+	// 	);
+	// }
 
 	if (!rules) {
 		int ret = editor_insert_char(editor, key);
 
 		if (ret < 0) {
 			return ret;
-		}
-
-		if (editor->config.use_autocomplete) {
-			editor_increment_line_freq(
-				editor,
-				editor->cursor.pos.y
-			);
 		}
 
 		if (editor->debug_mode) {
@@ -534,13 +527,6 @@ static int editor_handle_open_delimiters(Editor* editor, uint32_t key) {
 
 	u32string_insert(line_text, open, editor->cursor.pos.x);
 	u32string_insert(line_text, close, editor->cursor.pos.x + 1);
-
-	if (editor->config.use_autocomplete) {
-		editor_increment_line_freq(
-			editor,
-			editor->cursor.pos.y
-		);
-	}
 
 	file_set_line_dirty(&editor->actual_file->file, editor->cursor.pos.y);
 	file_set_has_dirty_line(&editor->actual_file->file);
@@ -595,21 +581,7 @@ static int editor_handle_close_delimiters
 	}
 
 	else {
-		if (editor->config.use_autocomplete) {
-			editor_decrement_line_freq(
-				editor,
-				editor->cursor.pos.y
-			);
-		}
-
 		int ret = editor_insert_char(editor, key);
-
-		if (editor->config.use_autocomplete) {
-			editor_increment_line_freq(
-				editor,
-				editor->cursor.pos.y
-			);
-		}
 
 		if (ret < 0) {
 			return ret;
@@ -718,36 +690,13 @@ static void editor_handle_goto(Editor* editor, struct normal_key key) {
 		}
 
 		else {
-			char* filename;
+			prompt_init(
+				&editor->status_bar,
+				PROMPT_INVALID_ARG,
+				PT_INFO
+			);
 
-			int ret = prompt_buf_to_u8string(
-				&editor->status_bar, 
-				&filename);
-
-			if (ret < 0) {
-				prompt_init(
-					&editor->status_bar,
-					PROMPT_INVALID_ARG,
-					PT_INFO
-				);
-
-				return;
-			}
-
-			ssize_t index = editor_has_filename(editor, filename);
-
-			free(filename);
-
-			if (index < 0) {
-				prompt_init(
-					&editor->status_bar,
-					PROMPT_INVALID_FILENAME,
-					PT_INFO);
-			}
-
-			else {
-				editor_change_actual_file(editor, index);
-			}
+			return;
 		}
 
 		if (editor->status_bar.type == PT_INTERACTIVE) {

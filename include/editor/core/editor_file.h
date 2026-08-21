@@ -6,8 +6,8 @@
 #include "util/types/stack.h"
 #include "util/types/position.h"
 #include "util/types/u32string.h"
+#include "util/types/hash.h"
 #include "editor/core/scroll.h"
-#include "util/types/trie.h"
 #include "file/file.h"
 #include "plugins/plugin.h"
 
@@ -20,15 +20,13 @@ typedef struct {
 } FileMetadata;
 
 typedef struct {
-	const char* filename;
+	const char* path;
 	int readonly;
 
 	size_t default_tab_size;
 	int default_use_spaces;
 
 	int inotify_fd;
-
-	int use_autocomplete;
 } EditorFileOptions;
 
 typedef enum {
@@ -92,7 +90,7 @@ typedef struct {
 	int externally_moved_from;
 	int externally_attrib_changed;
 
-	Trie words;
+	// Trie words;
 } EditorFile;
 
 /// --- File x EditorFile ---
@@ -155,19 +153,14 @@ void handle_file_moved_into(EditorFile* ef);
 void handle_file_attrib_changed(EditorFile* ef);
 void handle_file_create(EditorFile* ef, int inotify_fd);
 
-void editor_file_sync(EditorFile* ef, int use_autocomplete, Result* result);
+void editor_file_sync(EditorFile* ef, Result* result);
+void editor_file_reaload_words(EditorFile* ef);
 
 int editor_file_changed(const EditorFile* ef);
 
 void editor_file_set_readonly(EditorFile* ef);
 int editor_file_set_writeable(EditorFile* ef);
 
-void editor_file_update_word_frequency
-(
-	EditorFile* ef,
-	const uint32_t* word,
-	size_t size,
-	int increment
-);
+void editor_file_reload_words(EditorFile* ef);
 
 #endif

@@ -6,6 +6,7 @@
 /* a simple implementation of a vector for internal use */
 
 typedef void (*Destructor)(void*);
+typedef void (*Cloner)(const void* src, void* dst);
 
 typedef struct {
 	void* data;
@@ -13,8 +14,10 @@ typedef struct {
 	size_t capacity;
 	size_t elem_size;
 	Destructor destroy;
-	// Printer printer;
+	Cloner clone; // optional, but must be set manually otherwise
 } Vector;
+
+void vector_destructor(void* ptr);
 
 void vector_init(Vector* v, size_t elem_size, Destructor destroy);
 void vector_realloc(Vector* v, size_t new_capacity);
@@ -24,7 +27,6 @@ void vector_free(Vector* v);
 void vector_insert(Vector* v, size_t index, void* element);
 void vector_remove(Vector* v, size_t index, void* out);
 void vector_remove_and_destroy(Vector* v, size_t index);
-void vector_clear(Vector* v);
 
 void vector_reserve(Vector* v, size_t capacity);
 void vector_remove_range(Vector* v, size_t begin, size_t end);
@@ -50,6 +52,7 @@ void* vector_get(Vector* v, size_t index);
 const void* vector_get_const(const Vector* v, size_t index);
 // void* vector_get_unchecked(Vector* v, size_t index);
 
-
+void vector_clone(const Vector* src, Vector* dst);
+void vector_cloner(const void* src, void* dst);
 
 #endif

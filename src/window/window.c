@@ -67,7 +67,7 @@ Window window_new(WindowOptions* options) {
 
 	set_valid_pos(&w);
 
-	vector_init(&w.content, sizeof(u32string), u32string_vector_destroy);
+	vector_init(&w.content, sizeof(u32string), u32string_destructor);
 
 	w.cursor.pos = POS_ZERO;
 	w.cursor.preferred_column = 0;

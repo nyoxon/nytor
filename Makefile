@@ -1,4 +1,4 @@
-VERSION = 1.0.1
+VERSION = 1.1.0
 PACKAGE = nyt
 PACKAGE_DIR = package
 DEB_PATH = $(PACKAGE)_$(VERSION)_amd64.deb
@@ -10,7 +10,7 @@ CFLAGS += -DNYTOR_VERSION=\"$(VERSION)\" -std=c17 -D_GNU_SOURCE
 CFLAGS_DEBUG := -fsanitize=address,undefined
 CPPFLAGS := -Isrc -Iinclude
 
-LDFLAGS := 
+LDFLAGS := -lm
 LDFLAGS_DEBUG := -fsanitize=address,undefined
 
 SRC_DIR := src

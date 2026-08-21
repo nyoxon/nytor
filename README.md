@@ -4,7 +4,9 @@
 
 ![nytor demo](assets/demo.gif)
 
-`nytor` is a terminal-based text editor focused on being fast, lightweight, minimal and extensible, while providing a modern editing experience for linux only (for now).
+`nytor` is a terminal-based text editor focused on being fast, lightweight, 
+minimal and somehow extensible, while providing a modern editing experience for 
+linux only (for now).
 
 The idea behind it was to create a terminal-based editor like vim or hex
 but one that includes some of extra features, such as those found in editors
@@ -30,8 +32,8 @@ Currently supported:
 
 The editor provides word completion based on the contents of the current file.
 
-For performance reasons, the use of the autocomplete is optional and must be
-activated in the settings.
+The use of the autocomplete is optional and is disabled by default,
+but you can enable it using the config file.
 
 ![Autocomplete](assets/autocomplete.gif)
 
@@ -95,7 +97,6 @@ In addition to those presented above, the editor has several other features, suc
 
 - Minimal integration with compilers
 - Hexadecimal mode
-- Create a separate window for the pty created by the `terminal` command
 - `comment` cmd start operating on block comments as well
 
 ## Installation
@@ -182,14 +183,22 @@ Configuration files are stored in:
 ~/.config/nytor/
 ```
 
-## Project status
+## Limitations
 
-`nytor` is currently under active development.
+There is no hex mode.
 
-There are a few "incomplete" aspects to the program, mainly regarding
-the built-in autocomplete (because i didn't find a very intuitive way to implement it, which is one of the reasons it is optional).
-However, i believe the project is at a suitable level to actually be
-used for programming.
+The program currently doesn't handle huge files very well: that is,
+it will use a lot of memory if that happens.
+
+To avoid headaches early in the project, I stored Unicode characters
+as fixed 4-byte values. The problem with this is that if the editor is
+actually used for programming, it's almost impossible to find a non-ASCII
+character, meaning some memory would be wasted.
+I don't necessarily think it's a problem, but i do plan to change the
+storage strategy someday (and consequently, the strategy for access,
+removal, inserting, ..........................................)
+
+The autocomplete algorithm has complexity O(`size of file`).
 
 ## Contributing
 

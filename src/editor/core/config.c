@@ -1097,7 +1097,11 @@ static struct normal_key parse_key
 		return key;
 	}
 
-	if (strcmp(str, "up") == 0) {
+	if (strcmp(str, "none") == 0) {
+		key.content = KEY_CONTENT_NONE;
+	}
+
+	else if (strcmp(str, "up") == 0) {
 		key.content = ARROW_UP;
 	}
 

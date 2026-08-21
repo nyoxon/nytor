@@ -330,6 +330,9 @@ beforehand, a double-click will be necessary.
 .TP
 You can close a window using the ACTION_QUIT (Ctrl\-Q default) keybind.
 
+.TP
+You can click the top or bottom edges of a window to scroll the window's content
+
 
 .SH SELECTION BEHAVIOR
 .TP
@@ -568,9 +571,9 @@ closing the program.
 .SS KEYBINDS
 .br
 The format of a keybind is:
-.TP
-action = "keybind", where keybind = "mod1 + mod2 + ... + key/arrow"
 .br
+action = "keybind", where keybind = "mod1 + mod2 + ... + key/arrow"
+or action = "none" to permanently unbind an action.
 .TP
 key must be an ascii character with the exception of escapes
 .TP

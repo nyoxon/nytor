@@ -5,11 +5,21 @@
 #include <sys/stat.h>
 #include <assert.h>
 #include <ctype.h>
+#include <math.h>
 
 #include "editor/core/cmd.h" 
 #include "editor/core/auto_complete.h" 
 #include "editor/core/action.h"
 #include "util/files.h"
+#include "util/types/hash.h"
+
+#define MATCHES_CAPACITY 128
+#define LOC_FACTOR 0.25
+#define LOC_DECAI 20
+#define LOC_PROP 0.5
+
+#define LOCALITY(dx, dy) (exp(-(dy + LOC_FACTOR * dx  / (1 + dy)) / LOC_DECAI))
+#define SCORE(f, l) ((1 - LOC_PROP) * log(1 + f) + LOC_PROP * l)
 
 static int u32string_cmp(const void* a, const void* b) {
 	const u32string* sa = a;
@@ -63,34 +73,24 @@ static void get_file_and_dirname
 			: string_size - (last_slash -
 				u32string_into_ptr((u32string*) string)) - 1 
 	);
-
-	*dirname = u32_to_utf8(
-		u32string_into_ptr_const(string),
-
-		(last_slash == NULL)
-			? 0
-			: last_slash - u32string_into_ptr((u32string*) string)		
-	);
-
-	last_slash = NULL;
-
-	if (strlen(*dirname) == 0) {
-		char* tmp = realloc(*dirname, 2);
-
-		if (!tmp) {
-			free(*dirname);
-			free(*filename);
-
-			*dirname = NULL;
-			*filename = NULL;
-
-			return;
+	
+	if (last_slash) {
+		if (last_slash - u32string_into_ptr_const(string) == 0 &&
+			u32string_char(string, 0) == U'/') 
+		{
+			*dirname = strdup("/");
 		}
-
-		*dirname = tmp;
-
-		(*dirname)[0] = '.';
-		(*dirname)[1] = '\0';
+		
+		else {
+			*dirname = u32_to_utf8(
+				u32string_into_ptr_const(string),
+				last_slash - u32string_into_ptr_const(string)
+			);
+		}
+	}
+	
+	else {
+		*dirname = strdup(".");
 	}
 }
 
@@ -130,7 +130,10 @@ static void get_file_candidates
 			u32string name = u32string_new();
 
 			if (u32string_size(string) > strlen(filename)) {
-				u32string_appendu8(&name, dirname);
+				if (strcmp(dirname, "/") != 0) {
+					u32string_appendu8(&name, dirname);
+				}
+				
 				u32string_push(&name, U'/');
 			}
 
@@ -153,7 +156,7 @@ static Vector get_autocomp_candidates
 ) 
 {
 	Vector candidates;
-	vector_init(&candidates, sizeof(u32string), u32string_vector_destroy);
+	vector_init(&candidates, sizeof(u32string), u32string_destructor);
 
 	switch (type) {
 	case AUTOCOMP_CMD:
@@ -218,14 +221,14 @@ static void autocomp_prompt
 
 	x += suffix_size;
 
-	u32string_insert_range_raw(
-		text,
-		x,
-		additional_char,
-		1
-	);
-
-	x++;
+		u32string_insert_range_raw(
+			text,
+			x,
+			additional_char,
+			1
+		);
+	
+		x++;
 
 	editor->status_bar.cursor.pos.x = x;
 	prompt_cursor_update(&editor->status_bar);
@@ -365,7 +368,7 @@ int editor_autocomp_prompt(Editor* editor) {
 		return 0;		
 	}
 
-	float sw = 0.2;
+	float sw = 0.4;
 	float sh = 0.5;
 
 	Position pos = {
@@ -398,41 +401,33 @@ int editor_autocomp_prompt(Editor* editor) {
 
 typedef struct {
 	u32string string;
+
 	size_t frequency;
+	double locality;
 } WordFreq;
 
-static void collect_word
-(
-	const uint32_t* word,
-	size_t word_size,
-	TrieNode* node,
-	void* userdata
-)
-{
-	(void) node;
-
-	Vector* candidates = userdata;
-
-	u32string u32word = u32string_from_raw_copy(
-		word,
-		word_size
-	);
-
-	WordFreq w = {
-		.string = u32word,
-		.frequency = node->frequency
-	};
-
-	vector_push(candidates, &w);
-}
+typedef struct {
+	size_t frequency;
+	double locality;
+} Score;
 
 static int word_cmp(const void* a, const void* b) {
 	const WordFreq* wa = a;
 	const WordFreq* wb = b;
 
-	int ret = (int) wb->frequency - (int) wa->frequency;
+	double score_a = SCORE(wa->frequency, wa->locality);
+	double score_b = SCORE(wb->frequency, wb->locality);
 
-	return ret;
+	if (score_a == score_b) {
+		size_t a_size = u32string_size(&wa->string);
+		size_t b_size = u32string_size(&wb->string);
+
+		return (a_size > b_size) ? -1 : 1;
+	}
+
+	else {
+		return (score_a > score_b) ? -1 : 1;
+	}
 }
 
 static void autocomp_word
@@ -440,8 +435,7 @@ static void autocomp_word
 	Editor* editor,
 	u32string* text,
 	const uint32_t* suffix,
-	size_t suffix_size,
-	size_t prefix_size
+	size_t suffix_size
 )
 {
 	// necessarily greater than 0, otherwise
@@ -459,16 +453,14 @@ static void autocomp_word
 
 	x += suffix_size;
 
-	size_t word_size = prefix_size + suffix_size;
-
-	if (editor->config.use_autocomplete) {
-		editor_update_word_frequency(
-			editor,
-			u32string_into_ptr_const(text) + x - word_size,
-			word_size,
-			1
-		);
-	}
+	// if (editor->config.use_autocomplete) {
+	// 	editor_update_word_frequency(
+	// 		editor,
+	// 		u32string_into_ptr_const(text) + x - word_size,
+	// 		word_size,
+	// 		1
+	// 	);
+	// }
 
 	u32string_insert_range_raw(
 		text,
@@ -549,17 +541,287 @@ static WindowResult on_select_autocomp(void* userdata) {
 		editor,
 		text,
 		u32string_into_ptr_const(selected) + prefix_size,
-		suffix_size,
-		prefix_size
+		suffix_size
 	);
 
 	return WINDOW_CLOSE;
 }
 
+
+static int hash_increment_or_insert
+(
+	HashTable* ht,
+	u32string* key,
+	double locality
+)
+{
+	Score* score = hash_table_get(ht, key);
+
+	if (score) {
+		(score->frequency)++;
+
+		if (locality < score->locality) {
+			score->locality = locality;
+		}
+
+		return 1;
+	}
+
+	else {
+		Score score = {
+			.frequency = 1,
+			.locality = locality
+		};
+
+		hash_table_insert(ht, key, &score);
+
+		return 0;
+	}
+}
+
+static HashTable find_prefixed_words
+(
+	const Editor* editor,
+	const uint32_t* prefix,
+	size_t prefix_size
+) 
+{
+	size_t lines = file_num_lines(&editor->actual_file->file);
+
+	// pattern = "tre"
+	u32string pattern = u32string_from_raw_copy(
+		prefix,
+		prefix_size
+	);
+
+	IsWordChar is_word = editor_get_IsWordChar(editor);;
+
+	HashTable words = hash_table_new(
+		sizeof(u32string),			// key
+		u32string_destructor,
+
+		sizeof(Score),				// value
+		NULL,
+
+		hash_u32string,
+		equals_u32string
+	);
+
+	Position cursor_pos = editor->cursor.pos;
+
+	for (size_t i = 0; i < lines; i++) {
+		const u32string* text = file_get_line_text(
+			&editor->actual_file->file,
+			i
+		);
+
+		size_t size = u32string_size(text);
+		ssize_t index;
+		size_t pos = 0;
+
+		while ((index = u32string_find(text, pos, size, &pattern)) >= 0) {
+			if (words.size == MATCHES_CAPACITY) {
+				break;
+			}
+
+			// found: treant
+			//           x
+			size_t x = index + prefix_size;
+
+			while (x < size && is_word(u32string_char(text, x))) {
+				x++;
+			}
+
+			// found: abctre
+			//           i x
+			if (index > 0 && is_word(u32string_char(text, index - 1))) {
+				pos = index + x;
+				continue;
+			}
+
+			// found the prefix
+			if (i == cursor_pos.y && 
+				(size_t) index + prefix_size == cursor_pos.x) 
+			{
+				pos = index + x;
+				continue;
+			}
+
+			// found: treant
+			//             x
+
+			u32string word = u32string_slice(text, index, x);
+
+			double dy = labs((ssize_t) cursor_pos.y - (ssize_t) i);
+			double dx = labs((ssize_t) cursor_pos.x - (ssize_t) index);
+
+			double locality = LOCALITY(dx, dy);
+
+			// incremented, then free word
+			if (hash_increment_or_insert(&words, &word, locality) == 1) {
+				u32string_free(&word);
+			}
+
+			pos = index + x;
+		}
+	}
+
+	u32string_free(&pattern);
+
+	return words;
+}
+
+// static Vector* get_contained
+// (
+// 	const HashTable* ht,
+// 	const u32string* u32prefix
+// )
+// {
+// 	size_t prefix_size = u32string_size(u32prefix);
+
+// 	size_t max_size = 0;
+// 	ssize_t max_prefix_index = -1;
+
+// 	for (size_t i = 0; i < ht->capacity; i++) {
+// 		HashEntry* entry = &ht->entries[i];
+
+// 		if (entry->state != HASH_ENTRY_OCCUPIED) {
+// 			continue;
+// 		}
+
+// 		const u32string* string = entry->key;
+// 		size_t size = u32string_size(string);
+
+// 		if (prefix_size < size) {
+// 			continue;
+// 		}
+
+// 		if (u32string_equaln(string, u32prefix, size)) {
+// 			if (size > max_size) {
+// 				max_size = size;
+// 				max_prefix_index = i;
+// 			}
+
+// 			return (Vector*) entry->value;
+// 		}
+// 	}
+
+// 	if (max_prefix_index >= 0) {
+// 		HashEntry* entry = &ht->entries[max_prefix_index];
+
+// 		return (Vector*) entry->value;
+// 	}
+
+// 	return NULL;
+// }
+
+// static Vector keep_only_prefixed
+// (
+// 	const Vector* v, 
+// 	const u32string* u32prefix
+// )
+// {
+// 	Vector only_prefixed;
+// 	vector_init(&only_prefixed, v->elem_size, v->destroy);
+
+// 	size_t prefix_size = u32string_size(u32prefix);
+
+// 	for (size_t i = 0; i < v->size; i++) {
+// 		const u32string* string = vector_get_const(v, i);
+
+// 		if (u32string_size(string) < prefix_size) {
+// 			continue;
+// 		}
+
+// 		if (u32string_equaln(string, u32prefix, prefix_size)) {
+// 			u32string cloned = u32string_clone(string);
+
+// 			vector_push(&only_prefixed, &cloned);
+// 		}
+// 	}
+
+// 	return only_prefixed;
+// }
+
+static Vector get_ordened_words
+(
+	const Editor* editor,
+	const uint32_t* prefix,
+	size_t prefix_size
+)
+{
+	Vector strings;
+	vector_init(&strings, sizeof(u32string), u32string_destructor);
+
+
+	/// --- FIND WORDS AND SET CLONER ---
+	HashTable prefixed_words = find_prefixed_words(
+		editor,
+		prefix,
+		prefix_size
+	);
+
+	Vector words;
+	vector_init(&words, sizeof(WordFreq), NULL);
+
+	for (size_t i = 0; i < prefixed_words.capacity; i++) {
+		HashEntry* entry = &prefixed_words.entries[i];
+
+		if (entry->state != HASH_ENTRY_OCCUPIED) {
+			continue;
+		}
+
+		u32string* string = entry->key;
+		size_t size = u32string_size(string);
+
+		WordFreq word;
+
+		u32string word_string = u32string_from_raw(
+			u32string_into_ptr(string),
+			size
+		);
+
+		word.string = word_string;
+
+		Score* score = entry->value;
+
+		word.frequency = score->frequency;
+		word.locality = score->locality;
+
+		vector_push(&words, &word);
+		
+		free(entry->key);
+		free(entry->value);
+	}
+
+	free(prefixed_words.entries);
+
+	qsort(
+		words.data,
+		words.size,
+		words.elem_size,
+		word_cmp
+	);
+
+	for (size_t i = 0; i < words.size; i++) {
+		// WordFreq* w = vector_get(&words, i);
+
+		// log_write(&editor->log, "%f, %f, %zu",
+		// 	SCORE(w->frequency, w->locality),
+		// 	w->locality,
+		// 	w->frequency);
+
+		u32string* string = vector_get(&words, i);
+		vector_push(&strings, string);
+	}
+
+	vector_free(&words);
+
+	return strings;
+}
+
 int editor_autocomp_word(Editor* editor) {
-	if (!editor->actual_file->words.root ||
-		editor->cursor.pos.x == 0) 
-	{
+	if (editor->cursor.pos.x == 0) {
 		return -1;
 	}
 
@@ -613,29 +875,24 @@ int editor_autocomp_word(Editor* editor) {
 	const uint32_t* prefix = u32string_into_ptr_const(text) + word_start;
 	size_t prefix_size = word_end - word_start;
 
-	Vector words;
-	vector_init(&words, sizeof(WordFreq), NULL);
-
-	trie_prefix_search(
-		&editor->actual_file->words,
-		prefix,
-		prefix_size,
-		collect_word,
-		&words
+	Vector candidates = get_ordened_words(
+		editor,
+		prefix, 
+		prefix_size
 	);
 
-	if (words.size == 0) {
-		vector_free(&words);
+	if (candidates.size == 0) {
+		vector_free(&candidates);
 
 		return -1;
 	}
 
-	else if (words.size == 1) {
+	else if (candidates.size == 1) {
 		u32string* text_mut = (u32string*) text;
 		text = NULL;
 
 		WordFreq* wf = vector_get(
-			&words,
+			&candidates,
 			0
 		);
 
@@ -647,24 +904,16 @@ int editor_autocomp_word(Editor* editor) {
 			editor,
 			text_mut,
 			u32string_into_ptr_const(&word) + prefix_size,
-			suffix_size,
-			prefix_size
+			suffix_size
 		);
 
 		u32string_free(&wf->string);
-		vector_free(&words);
+		vector_free(&candidates);
 
 		return 0;
 	}
 
-	qsort(
-		words.data,
-		words.size,
-		words.elem_size,
-		word_cmp
-	);
-
-	float sw = 0.2;
+	float sw = 0.4;
 	float sh = 0.6;
 
 	size_t height = editor->tsize.rows * sh;
@@ -692,16 +941,7 @@ int editor_autocomp_word(Editor* editor) {
 	editor->window = window_new(&options);
 	editor->has_window = 1;
 
-	for (size_t i = 0; i < words.size; i++) {
-		WordFreq* wf = vector_get(
-			&words,
-			i
-		);
+	editor->window.content = candidates;
 
-		vector_push(&editor->window.content, &wf->string);
-	}
-
-	vector_free(&words);
-
-	return 0;	
+	return 0;
 }

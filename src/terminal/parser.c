@@ -6,7 +6,7 @@
 
 static const struct event KEY_NONE = {
 	.type = EVENT_KEY,
-	.key = {-1, 0}
+	.key = {KEY_CONTENT_NONE, 0}
 };
 
 static const struct event KEY_ESCAPE = {

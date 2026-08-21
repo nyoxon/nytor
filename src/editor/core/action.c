@@ -422,7 +422,7 @@ void editor_create_new_file
 )
 {
 	EditorFileOptions options = {
-		.filename = NULL,
+		.path = NULL,
 		.readonly = readonly,
 		.default_tab_size = editor->config.tab_size,
 		.default_use_spaces = editor->config.use_spaces,
@@ -530,12 +530,20 @@ int editor_create_internal_file
 void editor_open_file
 (
 	Editor* editor, 
-	const char* filename,
+	const char* path,
 	int readonly
 )
 {
+	ssize_t index = editor_has_file(editor, path);
+	
+	if (index >= 0) {
+		editor_change_actual_file(editor, index);
+		
+		return;
+	}
+	
 	EditorFileOptions options = {
-		.filename = filename,
+		.path = path,
 		.readonly = readonly,
 		.default_tab_size = editor->config.tab_size,
 		.default_use_spaces = editor->config.use_spaces,
@@ -884,21 +892,12 @@ int editor_save_file(Editor* editor, size_t index) {
 	if (ef->watch_descriptor < 0) {
 		editor_file_set_watcher(
 			ef,
-			ef->file.filename,
+			ef->file.path,
 			editor->inotify_fd
 		);
 	}
 
 	if (ef->new_file) {
-		if (editor->config.use_autocomplete) 
-		{
-			editor_file_sync(
-				ef,
-				editor->config.use_autocomplete,
-				&editor->result
-			);				
-		}
-
 		ef->new_file = 0;
 	}
 
@@ -1261,6 +1260,8 @@ void editor_select_word(Editor* editor) {
 		editor->sel.end.x = end;
 		editor->sel.start.y = y;
 		editor->sel.end.y = y;
+
+		editor_cursor_move(editor, (Position) { end, y });
 	} 
 
 	else {
@@ -1327,14 +1328,9 @@ int editor_paste_clipboard(Editor* editor) {
 	}
 
 	if (!u32string_is_empty(&editor->cb.text)) {
+		editor_selection_clear(editor);
+		
 		Position cursor_remove = editor->cursor.pos;
-
-		if (editor->config.use_autocomplete) {
-			editor_decrement_line_freq(
-				editor,
-				editor->cursor.pos.y
-			);
-		}
 
 		int ret = file_paste_clipboard(
 			&editor->actual_file->file, 
@@ -1361,12 +1357,6 @@ int editor_paste_clipboard(Editor* editor) {
 		Position cursor_insert = editor->cursor.pos;
 		Position start = cursor_remove;
 		Position end = editor->cursor.pos;
-
-		if (editor->config.use_autocomplete) {
-			for (size_t i = start.y; i <= end.y; i++) {
-				editor_increment_line_freq(editor, i);
-			}
-		}
 
 		u32string text = u32string_clone(&editor->cb.text);
 
@@ -1590,10 +1580,11 @@ void editor_scroll_left(Editor* editor) {
 void editor_scroll_down(Editor* editor) {
 	size_t lines = file_num_lines(&editor->actual_file->file);
 
-	if (editor->view.row_offset + editor->tsize.rows < lines) {
+	if (editor->view.row_offset < lines) {
 		editor->view.row_offset++;
 
 		if (editor->config.cursor_follow_scroll &&
+			editor->view.row_offset < lines &&
 			editor->cursor.pos.y < editor->view.row_offset) 
 		{
 			editor->cursor.pos.y++;
@@ -1791,11 +1782,6 @@ void editor_move_between_words_left(Editor* editor, int fullword) {
 		}
 	}
 
-	// if (start == u32string_size(line) - 1) {
-	// 	return;
-	// }
-
-
 	editor_cursor_move(editor, (Position) { start, editor->cursor.pos.y });
 
 	if (editor->debug_mode) {
@@ -1834,27 +1820,11 @@ void editor_operation_insert
 		&op->insert.text,
 		u32string_size(&op->insert.text) - 1) == U'\n';
 
-	if (editor->config.use_autocomplete) {
-		editor_decrement_line_freq(
-			editor,
-			editor->cursor.pos.y
-		);
-	}
-
 	file_paste_clipboard(
 		&editor->actual_file->file,
 		&cb,
 		&editor->cursor,
 		&editor->result);
-
-	if (editor->config.use_autocomplete) {
-		for (size_t i = op->insert.start.y; i <= op->insert.end.y; i++) {
-			editor_increment_line_freq(
-				editor,
-				i
-			);
-		}
-	}
 
 	clipboard_free(&cb);
 
@@ -1884,28 +1854,12 @@ void editor_operation_remove
 
 	editor->cursor.pos = op->cursor_insert;
 
-	if (editor->config.use_autocomplete) {
-		for (size_t i = sel.start.y; i <= sel.end.y; i++) {
-			editor_decrement_line_freq(
-				editor,
-				i
-			);
-		}
-	}
-
 	file_delete_selection(
 		&editor->actual_file->file, 
 		&sel,
 		&editor->result);
 
 	editor_cursor_move(editor, op->cursor_remove);
-
-	if (editor->config.use_autocomplete) {
-		editor_increment_line_freq(
-			editor,
-			editor->cursor.pos.y
-		);
-	}
 
 	if (editor->debug_mode) {
 		log_write(&editor->log, 
@@ -1923,43 +1877,20 @@ void editor_operation_indent
 	const Operation* op
 )
 {
+	editor_selection_clear(editor);
+
 	size_t start = op->indent.start.y;
 	size_t end = op->indent.end.y;
 
-	int move = start <= editor->cursor.pos.y ||
-			   editor->cursor.pos.y <= end;
-
-	if (start != end) {
-		file_indent_selection(
-			&editor->actual_file->file,
-			&editor->sel,
-			&editor->result
-		);
-	}
-
-	else {
+	for (size_t y = start; y <= end; y++) {
 		file_indent_a_line(
 			&editor->actual_file->file,
-			op->indent.start.y,
+			y,
 			&editor->result
 		);
-
-		if (editor->sel.active) {
-			size_t tab_size = editor->actual_file->file.tab_size;
-
-			if (editor->sel.start.y == start) {
-				editor->sel.start.x += tab_size;
-			}
-
-			if (editor->sel.end.y == start) {
-				editor->sel.end.x += tab_size;
-			}
-		}
 	}
 
-	if (move) {
-		editor_cursor_move(editor, op->cursor_insert);
-	}
+	editor_cursor_move(editor, op->cursor_insert);
 
 	if (editor->debug_mode) {
 		log_write(&editor->log, 
@@ -1981,60 +1912,20 @@ void editor_operation_unindent
 	const Operation* op
 )
 {
+	editor_selection_clear(editor);
+
 	size_t start = op->unindent.start.y;
 	size_t end = op->unindent.end.y;
 
-	int move = start <= editor->cursor.pos.y ||
-			   editor->cursor.pos.y <= end;
-
-	if (start != end) {
-		file_unindent_selection(
-			&editor->actual_file->file,
-			&editor->sel,
-			&editor->result
-		);
-	}
-
-	else {
+	for (size_t y = start; y <= end; y++) {
 		file_unindent_a_line(
 			&editor->actual_file->file,
-			start,
+			y,
 			&editor->result
 		);
-
-		if (editor->sel.active) {
-			size_t tab_size = 
-				(editor->actual_file->file.use_spaces)
-				? editor->actual_file->file.tab_size
-				: 1;
-
-			size_t move = 0;
-
-			const u32string* text = file_get_line_text_const(
-				&editor->actual_file->file,
-				start);
-
-			size_t indent = u32string_get_indent(
-				text,
-				editor->actual_file->file.use_spaces);
-
-			move = (indent >= tab_size)
-				? tab_size
-				: indent;
-
-			if (editor->sel.start.y == start) {
-				editor->sel.start.x -= move;
-			}
-
-			if (editor->sel.end.y == start) {
-				editor->sel.end.x -= move;
-			}
-		}
 	}
 
-	if (move) {
-		editor_cursor_move(editor, op->cursor_remove);	
-	}
+	editor_cursor_move(editor, op->cursor_remove);
 
 	if (editor->debug_mode) {
 		log_write(&editor->log, 
@@ -2056,6 +1947,8 @@ void editor_operation_comment
 	const Operation* op
 ) 
 {
+	editor_selection_clear(editor);
+
 	if (!editor->actual_file->language) {
 		return;
 	}
@@ -2073,35 +1966,25 @@ void editor_operation_comment
 		return;
 	}
 
+
 	size_t start = op->comment.start.y;
 	size_t end = op->comment.end.y;
 	ssize_t move_cursor;
 
-	if (start != end) {
-		file_comment_selection(
-			&editor->actual_file->file,
-			&editor->sel,
-			comment_fmt,
-			editor->cursor.pos.y,
-			&move_cursor
-		);
-	}
-
-	else {
+	for (size_t y = start; y <= end; y++) {
 		file_comment_line(
 			&editor->actual_file->file,
-			op->comment.start.y,
+			y,
 			comment_fmt,
 			&move_cursor
 		);
 	}
-
 
 	if (move_cursor < 0) {
 		editor_cursor_move(editor, op->cursor_remove);
 	}
 
-	else {
+	else if (move_cursor >= 0) {
 		editor_cursor_move(editor, op->cursor_insert);
 	}
 
@@ -2131,7 +2014,6 @@ static void delete_from_replacements
 	size_t y = 0;
 	size_t deletes = 0;
 
-	int first = 1;
 	u32string* line_text = vector_get(&editor->actual_file->file.lines, y);
 
 	Vector new_replacements;
@@ -2141,29 +2023,10 @@ static void delete_from_replacements
 		const Position* pos = vector_get_const(replacements, i);
 
 		if (y != pos->y) {
-			if (!first && editor->config.use_autocomplete) {
-				editor_increment_line_freq(
-					editor,
-					y
-				);			
-			}
-
 			y = pos->y;
 			line_text = vector_get(&editor->actual_file->file.lines, y);
 
 			deletes = 0;
-			first = 1;
-		}
-
-		if (first) {
-			if (editor->config.use_autocomplete) {
-				editor_decrement_line_freq(
-					editor,
-					y
-				);
-			}
-
-			first = 0;
 		}
 
 		size_t offset = deletes * pattern_size;
@@ -2216,7 +2079,6 @@ static void replace_from_replacements
 	size_t replaces = 0;
 	ssize_t size_offset = text_size - pattern_size;
 
-	int first = 1;
 	u32string* line_text = vector_get(&editor->actual_file->file.lines, y);
 
 	Vector new_replacements;
@@ -2226,29 +2088,10 @@ static void replace_from_replacements
 		const Position* pos = vector_get_const(replacements, i);
 
 		if (y != pos->y) {
-			if (!first && editor->config.use_autocomplete) {
-				editor_increment_line_freq(
-					editor,
-					y
-				);			
-			}
-
 			y = pos->y;
 			line_text = vector_get(&editor->actual_file->file.lines, y);
 
 			replaces = 0;
-			first = 1;
-		}
-
-		if (first) {
-			if (editor->config.use_autocomplete) {
-				editor_decrement_line_freq(
-					editor,
-					y
-				);			
-			}
-
-			first = 0;
 		}
 
 		ssize_t replace_offset = replaces * size_offset;
@@ -2456,92 +2299,6 @@ int editor_insert_char(Editor* editor, uint32_t c) {
 
 	IsWordChar is_word = editor_get_IsWordChar(editor);
 
-	// POSSIBLE OPTIMIZATION
-
-	// if (editor->config.use_autocomplete) {
-	// 	const u32string* text = file_get_line_text(
-	// 		&editor->actual_file->file,
-	// 		editor->cursor.pos.y
-	// 	);
-
-	// 	size_t x = editor->cursor.pos.x;
-
-	// 	if (!is_word(c)) {
-	// 		size_t old_start;
-	// 		size_t old_end;
-
-	// 		if (x > 0 && is_word(u32string_char(text, x - 1))) {
-	// 			size_t start = x - 1;
-
-	// 			while (start > 0 && 
-	// 				is_word(u32string_char(text, start - 1)))
-	// 			{
-	// 				start--;
-	// 			}
-
-	// 			const uint32_t* word = u32string_into_ptr_const(text) + 
-	// 				start;
-
-	// 			editor_file_update_word_frequency(
-	// 				editor->actual_file,
-	// 				word,
-	// 				x - start,
-	// 				1
-	// 			); 
-
-	// 			old_start = start;		
-	// 		}
-
-	// 		if (x < u32string_size(text) &&
-	// 			is_word(u32string_char(text, x + 1)))
-	// 		{
-	// 			size_t end = x + 1;
-
-	// 			while (end < u32string_size(text) &&
-	// 				is_word(u32string_char(text, end)))
-	// 			{
-	// 				end++;
-	// 			}
-
-	// 			const uint32_t* word = 
-	// 				u32string_into_ptr_const(text) + x;
-
-	// 			editor_file_update_word_frequency(
-	// 				editor->actual_file,
-	// 				word,
-	// 				end - x,
-	// 				1
-	// 			);
-
-	// 			old_end = end;
-
-	// 			word = u32string_into_ptr_const(text) + old_start;
-
-	// 			editor_file_update_word_frequency(
-	// 				editor->actual_file,
-	// 				word,
-	// 				old_end - old_start,
-	// 				-1
-	// 			);				
-	// 		}
-
-	// 		if (editor->debug_mode) {
-	// 			log_write(&editor->log, 
-	// 				"editor_insert_char: words now: %zu",
-	// 				trie_count(&editor->actual_file->words));
-	// 		}
-	// 	}
-	// }
-
-	if (!is_word(c) &&
-		editor->config.use_autocomplete) 
-	{
-		editor_decrement_line_freq(
-			editor,
-			editor->cursor.pos.y
-		);
-	}
-
 	int ret = file_insert_char(
 		&editor->actual_file->file,
 		editor->cursor.pos,
@@ -2550,15 +2307,6 @@ int editor_insert_char(Editor* editor, uint32_t c) {
 
 	if (ret < 0) {
 		return ret;
-	}
-
-	if (!is_word(c) &&
-		editor->config.use_autocomplete) 
-	{
-		editor_increment_line_freq(
-			editor,
-			editor->cursor.pos.y
-		);
 	}
 
 	editor_move_cursor_right(editor);
@@ -2618,13 +2366,6 @@ int editor_insert_tab(Editor* editor) {
 	u32string text;
 	size_t move;
 
-	if (editor->config.use_autocomplete) {
-		editor_decrement_line_freq(
-			editor,
-			editor->cursor.pos.y
-		);
-	}
-
 	if (editor->actual_file->file.use_spaces) {
 		text = u32string_new();
 
@@ -2644,13 +2385,6 @@ int editor_insert_tab(Editor* editor) {
 		u32string_insert(line_text, U'\t', editor->cursor.pos.x);
 
 		move = 1;
-	}
-
-	if (editor->config.use_autocomplete) {
-		editor_increment_line_freq(
-			editor,
-			editor->cursor.pos.y
-		);
 	}
 
 	editor_cursor_move(editor,
@@ -2697,13 +2431,6 @@ static int only_insert_a_newline
 	*/
 	Position cursor_remove = editor->cursor.pos;
 
-	if (editor->config.use_autocomplete) {
-		editor_decrement_line_freq(
-			editor,
-			editor->cursor.pos.y
-		);
-	}
-
 	int ret = file_insert_newline(
 		&editor->actual_file->file,
 		editor->cursor.pos,
@@ -2719,17 +2446,6 @@ static int only_insert_a_newline
 	as
 	|d
 	*/
-	if (editor->config.use_autocomplete) {
-		editor_increment_line_freq(
-			editor,
-			editor->cursor.pos.y
-		);
-
-		editor_increment_line_freq(
-			editor,
-			editor->cursor.pos.y + 1
-		);
-	}
 
 	if (ret < 0) {
 		return ret;
@@ -2824,17 +2540,6 @@ static int insert_delimiter_pair
 	} // increment now
 
 	*/
-	if (editor->config.use_autocomplete) {
-		editor_increment_line_freq(
-			editor,
-			editor->cursor.pos.y
-		);
-
-		editor_increment_line_freq(
-			editor,
-			editor->cursor.pos.y + 1
-		);
-	}
 
 	editor->cursor.pos.y++;
 
@@ -2973,13 +2678,6 @@ static void insert_newline_and_indent
 		}
 	}
 
-	if (editor->config.use_autocomplete) {
-		editor_increment_line_freq(
-			editor,
-			editor->cursor.pos.y
-		);
-	}
-
 	editor_cursor_move(
 		editor,
 		(Position) { new_indent, editor->cursor.pos.y } );
@@ -3072,12 +2770,7 @@ int editor_insert_newline(Editor* editor) {
 				u32string_char(line_text, editor->cursor.pos.x));
 	}
 
-	if (editor->config.use_autocomplete) {
-		editor_decrement_line_freq(
-			editor,
-			editor->cursor.pos.y
-		);
-	}
+	editor_selection_clear(editor);
 
 	// file->dirty = 1
 	ret = file_insert_newline(
@@ -3087,15 +2780,6 @@ int editor_insert_newline(Editor* editor) {
 
 	if (ret < 0) {
 		return ret;
-	}
-
-	if (editor->config.use_autocomplete) {
-		editor_increment_line_freq(
-			editor,
-			editor->cursor.pos.y
-		);
-
-		// the actual line already has the correct frequency
 	}
 
 
@@ -3156,26 +2840,10 @@ static int delete_selection
 		&editor->result
 	);
 
-	if (editor->config.use_autocomplete) {
-		for (size_t i = a.y; i <= b.y; i++) {
-			editor_decrement_line_freq(
-				editor,
-				i
-			);
-		}
-	}
-
 	int ret = file_delete_selection(
 		&editor->actual_file->file, 
 		&editor->sel, 
 		&editor->result);
-
-	if (editor->config.use_autocomplete) {
-		editor_increment_line_freq(
-			editor,
-			a.y
-		);
-	}
 
 	if (ret < 0) {
 		clipboard_free(&cb);
@@ -3234,13 +2902,6 @@ static int delete_delimiter_pair
 	// to 1
 	editor_move_cursor_right(editor);
 
-	if (editor->config.use_autocomplete) {
-		editor_decrement_line_freq(
-			editor,
-			editor->cursor.pos.y
-		);
-	}
-
 	for (size_t i = 0; i < 2; i++) {
 		ret = file_delete_char(
 			&editor->actual_file->file,
@@ -3251,13 +2912,6 @@ static int delete_delimiter_pair
 		if (ret < 0) {
 			return EIE_FATAL_ERROR;
 		}
-	}
-
-	if (editor->config.use_autocomplete) {
-		editor_increment_line_freq(
-			editor,
-			editor->cursor.pos.y
-		);
 	}
 
 	Position cursor_remove = editor->cursor.pos;
@@ -3301,140 +2955,12 @@ static int delete_single_char
 		c = u32string_char(text, editor->cursor.pos.x - 1);
 	}
 
-	// POSSIBLE OPTIMIZATION
-
-	// if (editor->config.use_autocomplete && 
-	// 	trie_count(&editor->actual_file->words) > 0) 
-	// {
-	// 	const u32string* text = file_get_line_text(
-	// 		&editor->actual_file->file,
-	// 		editor->cursor.pos.y
-	// 	);
-
-	// 	size_t x = editor->cursor.pos.x;
-	// 	size_t size = u32string_size(text);
-
-	// 	// asd| or as|d
-	// 	if (is_word(c) && size > 0) {
-	// 		size_t start = editor->cursor.pos.x - 1;
-	// 		size_t end = x;
-
-	// 		while (start > 0 && 
-	// 			is_word(u32string_char(text, start - 1))) 
-	// 		{
-	// 			start--;
-	// 		}
-
-	// 		while (end < size &&
-	// 			is_word(u32string_char(text, end)))
-	// 		{
-	// 			end++;
-	// 		}
-
-	// 		const uint32_t* word = u32string_into_ptr_const(text) + 
-	// 			start;
-
-	// 		editor_file_update_word_frequency(
-	// 			editor->actual_file,
-	// 			word,
-	// 			end - start,
-	// 			-1
-	// 		);
-	// 	}
-
-	// 	// as |d
-	// 	if (!is_word(c) && size > 0 &&
-	// 		x > 1 &&
-	// 		x < size &&
-	// 		is_word(u32string_char(text, x - 2)) &&
-	// 		is_word(u32string_char(text, x))) 
-	// 	{
-	// 		size_t start = editor->cursor.pos.x;
-	// 		size_t end = x;
-
-	// 		u32string new_word;
-
-	// 		size_t y = start - 1;
-
-	// 		while (y > 0 &&
-	// 			is_word(u32string_char(text, y - 1)))
-	// 		{
-	// 			y--;
-	// 		}
-
-	// 		const uint32_t* word = 
-	// 			u32string_into_ptr_const(text) + y;
-
-	// 		editor_file_update_word_frequency(
-	// 			editor->actual_file,
-	// 			word,
-	// 			(start - 1) - y,
-	// 			-1
-	// 		);
-
-	// 		new_word = u32string_from_raw_copy(
-	// 			word,
-	// 			(start - 1) - y
-	// 		);
-
-	// 		while (end < size &&
-	// 			is_word(u32string_char(text, end)))
-	// 		{
-	// 			end++;
-	// 		}
-
-	// 		word = u32string_into_ptr_const(text) + start;
-
-	// 		editor_file_update_word_frequency(
-	// 			editor->actual_file,
-	// 			word,
-	// 			end - start,
-	// 			-1
-	// 		);
-
-	// 		u32string_append_raw(
-	// 			&new_word,
-	// 			word,
-	// 			end - start
-	// 		);
-
-	// 		editor_file_update_word_frequency(
-	// 			editor->actual_file,
-	// 			u32string_into_ptr_const(&new_word),
-	// 			u32string_size(&new_word),
-	// 			1
-	// 		);
-
-	// 		u32string_free(&new_word);	
-	// 	}
-
-	// 	if (editor->debug_mode) {
-	// 		log_write(&editor->log, 
-	// 			"editor_delete_single_char: words now: %zu",
-	// 			trie_count(&editor->actual_file->words));
-	// 	}
-	// }
-
-	if (editor->config.use_autocomplete) {
-		editor_decrement_line_freq(
-			editor,
-			editor->cursor.pos.y
-		);
-	}
-
 	ret = file_delete_char(
 		&editor->actual_file->file, 
 		editor->cursor.pos);
 
 	if (ret < 0) {
 		return ret;
-	}
-
-	if (editor->config.use_autocomplete) {
-		editor_increment_line_freq(
-			editor,
-			editor->cursor.pos.y
-		);
 	}
 
 	editor_move_cursor_left(editor);
@@ -3479,18 +3005,6 @@ int delete_newline
 		&editor->actual_file->file,
 		editor->cursor.pos.y - 1);
 
-	if (editor->config.use_autocomplete) {
-		editor_decrement_line_freq(
-			editor,
-			editor->cursor.pos.y - 1
-		);
-
-		editor_decrement_line_freq(
-			editor,
-			editor->cursor.pos.y
-		);
-	}
-
 	ret = file_merge_lines(
 		&editor->actual_file->file, 
 		editor->cursor.pos,
@@ -3498,13 +3012,6 @@ int delete_newline
 
 	if (ret < 0) {
 		return ret;
-	}
-
-	if (editor->config.use_autocomplete) {
-		editor_increment_line_freq(
-			editor,
-			editor->cursor.pos.y - 1
-		);
 	}
 
 	editor_cursor_move(
@@ -4197,8 +3704,6 @@ static void range_delete
 
 		ssize_t index;
 
-		int first_in_line = 1;
-
 		while ((index = u32string_find(
 				&line->text, 
 				0,
@@ -4211,20 +3716,7 @@ static void range_delete
 
 			if (first) {
 				first_line = i;
-				// resolving a BUG 😠: 13/08/26
-				// line->dirty = 1;
 				first = 0;
-			}
-
-			if (first_in_line) {
-				if (editor->config.use_autocomplete) {
-					editor_decrement_line_freq(
-						editor,
-						i
-					);
-				}
-			
-				first_in_line = 0;				
 			}
 
 			if (replacements) {
@@ -4242,13 +3734,6 @@ static void range_delete
 				&line->text,
 				index,
 				index + pattern_size
-			);
-		}
-
-		if (!first_in_line && editor->config.use_autocomplete) {
-			editor_increment_line_freq(
-				editor,
-				i
 			);
 		}
 	}
@@ -4288,8 +3773,6 @@ static void range_replace
 		ssize_t index;
 		size_t pos = 0;
 
-		int first_in_line = 1;
-
 		while ((index = u32string_find(
 				&line->text, 
 				pos,
@@ -4303,17 +3786,6 @@ static void range_replace
 				// resolving a BUG 😠: 13/08/26
 				// line_text->dirty = 1;
 				first = 0;
-			}
-
-			if (first_in_line) {
-				if (editor->config.use_autocomplete) {
-					editor_decrement_line_freq(
-						editor,
-						i
-					);
-				}
-
-				first_in_line = 0;
 			}
 
 			if (replacements) {
@@ -4341,13 +3813,6 @@ static void range_replace
 			);
 
 			pos = index + text_size;
-		}
-
-		if (!first_in_line && editor->config.use_autocomplete) {
-			editor_increment_line_freq(
-				editor,
-				i
-			);
 		}
 	}
 
@@ -4464,7 +3929,6 @@ static void range_selection_delete
 		Line* line = vector_get(&editor->actual_file->file.lines, i);
 
 		ssize_t index;
-		int first_in_line = 1;
 
 		size_t find_from = 0;
 		size_t find_until = u32string_size(&line->text);
@@ -4508,17 +3972,6 @@ static void range_selection_delete
 				first = 0;
 			}
 
-			if (first_in_line) {
-				if (editor->config.use_autocomplete) {
-					editor_decrement_line_freq(
-						editor,
-						i
-					);
-				}
-
-				first_in_line = 0;
-			}
-
 			if (replacements) {
 				Position pos = (Position) { index, i };
 
@@ -4529,13 +3982,6 @@ static void range_selection_delete
 				&line->text,
 				index,
 				index + pattern_size
-			);
-		}
-
-		if (!first_in_line && editor->config.use_autocomplete) {
-			editor_increment_line_freq(
-				editor,
-				i
 			);
 		}
 	}
@@ -4573,7 +4019,6 @@ static void range_selection_replace
 
 		ssize_t index;
 		size_t pos = 0;
-		int first_in_line = 1;
 
 		size_t find_until = u32string_size(&line->text);
 
@@ -4612,17 +4057,6 @@ static void range_selection_replace
 				first = 0;
 			}
 
-			if (first_in_line) {
-				if (editor->config.use_autocomplete) {
-					editor_decrement_line_freq(
-						editor,
-						i
-					);
-				}
-
-				first_in_line = 0;				
-			}
-
 			if (replacements) {
 				Position pos = (Position) { index, i };
 
@@ -4645,13 +4079,6 @@ static void range_selection_replace
 			);
 
 			pos = index + text_size;
-		}
-
-		if (!first_in_line && editor->config.use_autocomplete) {
-			editor_increment_line_freq(
-				editor,
-				i
-			);
 		}
 	}
 

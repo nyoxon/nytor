@@ -17,6 +17,8 @@
 #define KEY_MOD_CTRL_ALT 7
 #define KEY_MOD_CTRL_SHIFT_ALT 8
 
+#define KEY_CONTENT_NONE UINT32_MAX
+
 
 // 0x110000 > unicode upper bound
 enum arrow {

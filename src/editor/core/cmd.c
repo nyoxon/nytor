@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <dirent.h>
+#include <libgen.h>
 
 #include "editor/core/cmd.h"
 #include "editor/core/action.h"
@@ -66,6 +67,113 @@ static WindowResult on_select_change_theme(void* userdata) {
 	return WINDOW_CLOSE;
 }
 
+
+static void get_dir_content(DIR* dir, Vector* content) {
+	struct dirent* entry;
+
+	while ((entry = readdir(dir)) != NULL) {
+		if (strcmp(entry->d_name, ".") == 0 ||
+			strcmp(entry->d_name, "..") == 0) 
+		{
+			continue;
+		}
+
+		u32string name = u32string_from(entry->d_name);
+
+		if (entry->d_type == DT_DIR) {
+			u32string_push(&name, U'/');
+		}
+
+		vector_push(content, &name);
+	}
+}
+
+static WindowResult on_select_open_file(void* userdata) {
+	assert(userdata != NULL);
+
+	Editor* editor = userdata;
+
+	if (editor->window.cursor.pos.y == 0) {
+		return WINDOW_KEEP_OPEN;
+	}
+
+	u32string* selected = vector_get(
+		&editor->window.content,
+		editor->window.cursor.pos.y
+	);
+
+	char* actual_dir = u32string_into_u8((u32string*) vector_get(
+		&editor->window.content,
+		0));
+
+	char* name = u32string_into_u8(selected);
+	int parent = strcmp(name, "..") == 0;
+
+	char path[PATH_MAX_LENGTH];
+	strcpy(path, actual_dir);
+	strcpy(path + strlen(actual_dir), name);
+
+	free(name);
+
+	WindowResult result;
+
+	if (isdir(path)) {
+		vector_free(&editor->window.content);
+
+		u32string cwd;
+
+		if (parent) {
+			dirname(actual_dir);
+
+			cwd = u32string_from(actual_dir);
+
+			if (actual_dir[strlen(actual_dir) - 1] != '/') {
+				u32string_push(&cwd, U'/');
+			}
+		}
+
+		else {
+			cwd = u32string_from(path);
+		}
+
+		vector_push(&editor->window.content, &cwd);
+
+		if (strcmp(path, "/") == 0 ||
+			strcmp(actual_dir, "/") != 0) 
+		{
+			u32string parent = u32string_from("..");
+			vector_push(&editor->window.content, &parent);
+		}
+
+		DIR* dir = opendir(path);
+
+		if (!dir) {
+			free(actual_dir);
+
+			return WINDOW_CLOSE;
+		}
+
+		get_dir_content(dir, &editor->window.content);
+
+		closedir(dir);
+
+		editor->window.cursor.pos = POS_ZERO;
+		editor->window.view = (View) {0};
+
+		result = WINDOW_KEEP_OPEN;
+	}
+
+	else {
+		editor_open_file(editor, path, 0);
+
+		result = WINDOW_CLOSE;
+	}
+
+	free(actual_dir);
+
+	return result;
+}
+
 // Window.on_select callback
 WindowResult show_help
 (
@@ -96,6 +204,179 @@ WindowResult show_help
 	clipboard_free(&cb);
 
 	return WINDOW_CLOSE;
+}
+
+WindowResult on_select_goto_match(void* userdata) {
+	assert(userdata != NULL);
+
+	Editor* editor = userdata;
+
+	const u32string* selected = vector_get_const(
+		&editor->window.content,
+		editor->window.cursor.pos.y
+	);
+
+	size_t x = 0;
+	uint32_t c;
+
+	while ((c = u32string_char(selected, x)) != U':') {
+		x++;
+	}
+
+	u32string u32number = u32string_from_raw_copy(
+		u32string_into_ptr_const(selected),
+		x++
+	);
+
+	long line = u32stol(&u32number) - 1;
+	u32string_free(&u32number);
+
+	size_t start = x;
+
+	log_write(&editor->log, "%zu", start);
+
+	while ((c = u32string_char(selected, x)) != U':') {
+		x++;
+	}
+
+	log_write(&editor->log, "%zu", x);
+
+	u32number = u32string_from_raw_copy(
+		u32string_into_ptr_const(selected) + start,
+		x - start
+	);
+
+	long column = u32stol(&u32number);
+	u32string_free(&u32number);
+
+	editor_cursor_move(editor, (Position) { column, line });
+
+	log_write(&editor->log, "%zu, %zu", column, line);
+
+	return WINDOW_CLOSE;
+}
+
+typedef enum {
+	FIND_ONE,
+	FIND_ALL,
+} FindFlag;
+
+static int find_action
+(
+	Editor* editor, 
+	const u32string* pattern, 
+	FindFlag flag
+) 
+{
+	switch (flag) {
+	case FIND_ONE: {
+		if (editor->sel.active) {
+			return editor_find_next_pattern_within_selection(
+				editor,
+				pattern,
+				1
+			);
+		}
+
+		else {
+			return editor_find_next_pattern_match(
+				editor,
+				POS_ZERO,
+				pattern,
+				1
+			);
+		}
+	}
+
+	case FIND_ALL: {
+		size_t offset = 8;
+		size_t pattern_size = u32string_size(pattern);
+
+		editor_selection_clear(editor);
+		size_t lines = file_num_lines(&editor->actual_file->file);
+
+		Vector matches;
+		vector_init(&matches, sizeof(u32string), u32string_destructor);
+
+		for (size_t i = 0; i < lines; i++) {
+			const u32string* text = file_get_line_text(
+				&editor->actual_file->file,
+				i
+			);
+
+			size_t size = u32string_size(text);
+
+			ssize_t index;
+			size_t pos = 0;
+
+			while ((index = u32string_find(text, pos, size, pattern)) >= 0) 
+			{
+				char line[i];
+				sprintf(line, "%zu", (size_t) i + 1);
+
+				u32string match = u32string_from(line);
+				u32string_push(&match, U':');
+
+				char pos_x[index];
+				sprintf(pos_x, "%zu", (size_t) index);
+
+				u32string u32pos = u32string_from(pos_x);
+
+				u32string_append_raw(
+					&match,
+					u32string_into_ptr_const(&u32pos),
+					u32string_size(&u32pos)
+				);
+
+				u32string_free(&u32pos);
+
+				u32string_push(&match, U':');
+				u32string_push(&match, U' ');
+
+				size_t left = ((size_t) index > offset)
+					? index - offset
+					: 0;
+
+				size_t right = 
+					((size_t) index + pattern_size + offset >= size)
+						? size
+						: index + pattern_size + offset;
+
+				u32string_append_raw(
+					&match,
+					u32string_into_ptr_const(text) + left,
+					right - left
+				);
+
+				vector_push(&matches, &match);
+
+				pos = index + pattern_size;
+			}
+		}
+
+		if (matches.size == 0) {
+			return 0;
+		}
+
+		WindowOptions options = {
+			.pos_type = WINDOWPOS_CENTRALIZED,
+			.sw = 0.5,
+			.sh = 0.5,
+			.tsize = editor->tsize,
+			.tab_size = editor->actual_file->file.tab_size,
+			.on_select = on_select_goto_match
+		};
+
+		editor->window = window_new(&options);
+		editor->has_window = 1;
+		editor->window.content = matches;
+
+		return 1;		
+	}
+
+	default:
+		return 0;
+	}
 }
 
 
@@ -278,6 +559,8 @@ const cmd newas = {
 		"------------------------------------------------------------------\n"
 		"More:\n\n"
 		" ---- FILENAME FORMAT ---- \n\n"
+		"The filename name passed must contain the relative path, unless it is\n"
+		"in the current directory.\n\n"
 		"If there is a space character inside the filename, use quotation marks \n"
 		"\" \" to delimit the filename itself. If there isn't, the use of quotation\n"
 		"marks is optional. In order to pass a filename with spaces and that contains \n"
@@ -308,6 +591,8 @@ const cmd close_cmd = { // man 2 close
 		"------------------------------------------------------------------\n"
 		"More:\n\n"
 		" ---- FILENAME FORMAT ---- \n\n"
+		"The filename name passed dont' need to contain the relative path, unless there are\n"
+		"differents files with the same name.\n\n"
 		"If there is a space character inside the filename, use quotation marks \n"
 		"\" \" to delimit the filename itself. If there isn't, the use of quotation\n"
 		"marks is optional. In order to pass a filename with spaces and that contains \n"
@@ -350,7 +635,7 @@ const cmd open_cmd = { // man 2 open
 		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨\n"
 		"Name: open\n"
 		"------------------------------------------------------------------\n"
-		"Args (required):\n"
+		"Args (optional):\n"
 		" -	filename\n"
 		"------------------------------------------------------------------\n"
 		"Action: opens the file with the specified filename.\n"
@@ -362,7 +647,10 @@ const cmd open_cmd = { // man 2 open
 		"marks is optional. In order to pass a filename with spaces and that contains \n"
 		"a \", you must escape that \" using \\ .\n\n"
 		" ---- BEHAVIOR ----\n\n"
-		"(1) If the file does not exist, the command's behavior \n"
+		"(1) If no arg is passed, a window will be created showing the content of the\n"
+		"current directory. You can select a file to open it or select a dir in order \n"
+		"to move to it and see its content.\n\n"
+		"(2) If the file does not exist, the command's behavior \n"
 		"is the same as that of 'newas', aside from the part that \n"
 		"passing a filename that already exits is an error.\n\n"
 		" ---- EXAMPLES ----\n\n"
@@ -696,6 +984,33 @@ const cmd find = {
 };
 
 
+// --- FINDALL --
+const cmd findall = {
+	.name = "findall",
+	.description = 
+		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨\n"
+		"Name: findall\n"
+		"------------------------------------------------------------------\n"
+		"Args (required):\n"
+		" -	pattern\n"
+		"------------------------------------------------------------------\n"
+		"Action: finds all the 'pattern' matches in the file.\n"
+		"------------------------------------------------------------------\n"
+		"More: \n\n"
+		"It's equivalent to the 'find' command, but a window will be created\n"
+		"with lines following this format:\n\n"
+		"line:column: slice\n\n"
+		"line: line number where the match was found.\n"
+		"column: start of the match in the line.\n"
+		"slice: a view of the match and its surroundings.\n\n"
+		"You can select a line to goto the corresponding match.\n"
+		"------------------------------------------------------------------\n"
+		"Errors: it is an error to include escape characters in the pattern \n"
+		"other than \\\" or \\\\ . \n"
+		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨",
+};
+
+
 // --- MATCH ---
 const cmd match = {
 	.name = "match",
@@ -756,24 +1071,14 @@ const cmd goto_cmd = {
 		"------------------------------------------------------------------\n"
 		"Args (optional):\n"
 		" -	line_number\n"
-		" -	filename\n"
 		"------------------------------------------------------------------\n"
-		"Action: go to line 'line_number' or to file with name 'filename'.\n"
+		"Action: go to line 'line_number'.\n"
 		"------------------------------------------------------------------\n"
 		"More:\n\n"
-		" ---- PATTERN FORMAT ---- \n\n"
-		"If there is a space character inside the arg, use quotation marks \n"
-		"\" \" to delimit the name itself. If there isn't, the use of quotation\n"
-		"marks is optional. In order to pass a arg with spaces and that contains \n"
-		"a \", you must escape this \" using \\ .\n\n"
 		" ---- BEHAVIOR AND LIMITATIONS ----\n\n"
 		"(1) Lines are numbered from 1 to size_of_file; for this reason, \n"
 		"'line_number' == 0 or 'line_number' > size_of_file points to the \n"
 		"last line of the file.\n\n"
-		"(2) If there is no argument, the program will go to the first line of \n"
-		"the file.\n\n"
-		"(3) The program firt attempts to convert the passed argument into a \n"
-		"number; if it fails, the argument is treated as a name.\n\n"
 		" ---- EXAMPLES ----\n\n"
 		"Suppose the command is called like this: \n\n"
 		"> goto 19\n\n"
@@ -784,22 +1089,9 @@ const cmd goto_cmd = {
 		"In order to go to the first line: \n\n"
 		"> goto 1\n\n"
 		"or\n\n"
-		"> goto\n\n"
-		"Suppose now that the command is called like this: \n\n"
-		"> goto cool_text.txt\n\n"
-		"If the file cool_text.txt exists inside the editor, it will become the \n"
-		"current file.\n\n"
-		"In order to goto a file named \"unix file with spaces in the name '-'\": \n\n"
-		"> goto \"unix file with spaces in the name '-'\"\n\n"
-		"Ilustrating the behavior of first attempting to convert the passed arg \n"
-		"to a number, suppose that the command is called like this:\n\n"
-		"> goto 123weird_text_name.txt\n\n"
-		"Since the program will not be able to convert the passed arg into a number, \n"
-		"it will attempt to change the actual file to \"123weird_text_name.txt\"\n"
+		"> goto\n"
 		"------------------------------------------------------------------\n"
-		"Errors: it is an error to pass a negative line_number \n"
-		"or a filename that does not correspond to an actual file \n"
-		"in the program. \n"
+		"Errors: it is an error to pass a negative line_number. \n"
 		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨",
 };
 
@@ -947,10 +1239,12 @@ const cmd files = {
 		"------------------------------------------------------------------\n"
 		"More:\n\n"
 		" ---- BEHAVIOR ----\n\n"
-		"It is possible to move the cursor between the lines \n"
+		"(1) It is possible to move the cursor between the lines \n"
 		"displayed in the window and select one of them by pressing \n"
 		"ENTER, SPACE or TAB. Once a line is selected, the current file \n"
-		"will change to the file named in the selected line.\n"
+		"will change to the file named in the selected line.\n\n"
+		"(2) The names on the window will be the filenames without the relative\n"
+		"path, unless there are two files with the same name."
 		"------------------------------------------------------------------\n"
 		"Errors: none\n"
 		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨"
@@ -1046,7 +1340,6 @@ const cmd sync_cmd = {
 		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨"
 };
 
-
 // --- HELP ---
 const cmd help = {
 	.name = "help",
@@ -1063,6 +1356,7 @@ const cmd help = {
 		"-    quits\n"
 		"-    quit!\n"
 		"-    find\n"
+		"-    findall\n"
 		"-    block\n"
 		"-    match\n"
 		"-    goto\n"
@@ -1106,6 +1400,7 @@ const cmd COMMANDS[] = {
 	copy,
 	paste,
 	find,
+	findall,
 	themes,
 	match,
 	block,
@@ -1144,7 +1439,7 @@ static void handle_help(Editor* editor, char* words[], size_t n) {
 			.sw = 0.2,
 			.sh = 0.5,
 			.tsize = editor->tsize,
-			.tab_size = editor->config.tab_size,
+			.tab_size = editor->actual_file->file.tab_size,
 			.on_select = show_help
 		};
 
@@ -1199,6 +1494,11 @@ static void handle_help(Editor* editor, char* words[], size_t n) {
 		else if (strcmp(words[1], find.name) == 0) {
 			cb.text = u32string_from(find.description);
 			sprintf(buf, "%s man", find.name);
+		}
+
+		else if (strcmp(words[1], findall.name) == 0) {
+			cb.text = u32string_from(findall.description);
+			sprintf(buf, "%s man", findall.name);
 		}
 
 		else if (strcmp(words[1], themes.name) == 0) {
@@ -1547,7 +1847,7 @@ int editor_handle_cmd
 		else {
 			const char* new_name = words[1];
 
-			ssize_t index = editor_has_filename(editor, new_name);
+			ssize_t index = editor_has_file(editor, new_name);
 
 			if (index >= 0 &&
 				(size_t) index != editor->actual_file_index) 
@@ -1577,7 +1877,7 @@ int editor_handle_cmd
 				);
 
 				int ret = rename(
-					editor->actual_file->file.filename,
+					editor->actual_file->file.path,
 					new_name
 				);
 
@@ -1596,10 +1896,12 @@ int editor_handle_cmd
 
 					goto cleanup;
 				}
-
-
-				free(editor->actual_file->file.filename);
-				editor->actual_file->file.filename = strdup(new_name);
+				
+				file_set_name(
+					&editor->actual_file->file,
+					new_name,
+					1
+				);
 
 				editor_save_file(editor, editor->actual_file_index);
 
@@ -1607,24 +1909,15 @@ int editor_handle_cmd
 
 				file_set_all_lines_dirty(&editor->actual_file->file);
 
-				if (editor->config.use_autocomplete &&
-					!editor->actual_file->readonly) 
-				{
-					editor_file_sync(
-						editor->actual_file,
-						editor->config.use_autocomplete,
-						&editor->result
-					);				
-				}
-
-				// editor_file_update_metadata(editor->actual_file);
-
 				goto cleanup;		
 			}
 
 			// create a new file
-			free(editor->actual_file->file.filename);
-			editor->actual_file->file.filename = strdup(new_name);
+			file_set_name(
+				&editor->actual_file->file,
+				new_name,
+				1
+			);
 
 			editor_save_file(editor, editor->actual_file_index);
 			editor_prompt_init(editor);
@@ -1679,7 +1972,7 @@ int editor_handle_cmd
 
 
 	/// --- FIND ---
-	if (strcmp(words[0], find.name) == 0) {
+	if (strncmp(words[0], find.name, strlen(find.name)) == 0) {
 		if (n == 1) {
 			prompt_init(&editor->status_bar,
 				PROMPT_NO_ARGS,
@@ -1687,6 +1980,21 @@ int editor_handle_cmd
 
 			goto cleanup;
 		}
+
+		if (strlen(words[0]) > strlen(find.name) &&
+			strcmp(words[0], findall.name) != 0)
+		{
+			prompt_init(
+				&editor->status_bar,
+				PROMPT_INVALID_COMMAND,
+				PT_INFO);
+
+			goto cleanup;	
+		}
+
+		int flag = (strlen(words[0]) > strlen(find.name))
+			? FIND_ALL
+			: FIND_ONE;
 
 		char* pattern;
 		int ret = words_to_u8string(
@@ -1703,48 +2011,20 @@ int editor_handle_cmd
 		u32string patt = u32string_from(pattern);
 		free(pattern);
 
-		if (editor->sel.active) {
-			int found = editor_find_next_pattern_within_selection(
-				editor,
-				&patt,
-				1
+		int found = find_action(editor, &patt, flag);
+
+		if (!found) {
+			prompt_init(
+				&editor->status_bar,
+				"not found",
+				PT_INFO
 			);
-
-			if (!found) {
-				prompt_init(
-					&editor->status_bar,
-					"not found",
-					PT_INFO
-				);
-			}
-
-			u32string_free(&patt);
-
-			goto cleanup;
 		}
 
-		else {
-			int found = editor_find_next_pattern_match(
-				editor,
-				POS_ZERO,
-				&patt,
-				1
-			);
+		u32string_free(&patt);
 
-			if (!found) {
-				prompt_init(
-					&editor->status_bar,
-					"not found",
-					PT_INFO
-				);
-			}
-
-			u32string_free(&patt);
-
-			goto cleanup;
-		}
+		goto cleanup;
 	}
-
 
 	/// --- MATCH ---
 	if (strcmp(words[0], match.name) == 0) {
@@ -1770,34 +2050,40 @@ int editor_handle_cmd
 
 		// goto a file
 		if (end == words[1] || *end != '\0') {
-			char* filename;
-
-			int ret = words_to_u8string(
-				editor,
-				words + 1,
-				n - 1,
-				&filename
+			prompt_init(
+				&editor->status_bar,
+				PROMPT_INVALID_ARG,
+				PT_INFO
 			);
-
-			if (ret < 0) {
-				goto cleanup;
-			}
-
-			ssize_t index = editor_has_filename(editor, filename);
-			free(filename);
-
-			if (index < 0) {
-				prompt_init(
-					&editor->status_bar,
-					PROMPT_INVALID_FILENAME,
-					PT_INFO);
-
-				goto cleanup;
-			}
-
-			editor_change_actual_file(editor, index);
-
+			
 			goto cleanup;
+			
+			// int ret = words_to_u8string(
+			// 	editor,
+			// 	words + 1,
+			// 	n - 1,
+			// 	&path
+			// );
+
+			// if (ret < 0) {
+			// 	goto cleanup;
+			// }
+
+			// ssize_t index = editor_has_file(editor, path);
+			// free(path);
+
+			// if (index < 0) {
+			// 	prompt_init(
+			// 		&editor->status_bar,
+			// 		PROMPT_INVALID_FILENAME,
+			// 		PT_INFO);
+
+			// 	goto cleanup;
+			// }
+
+			// editor_change_actual_file(editor, index);
+
+			// goto cleanup;
 		}
 
 		// goto a line
@@ -1861,12 +2147,12 @@ int editor_handle_cmd
 			goto cleanup;
 		}
 
-		char* filename;
+		char* path;
 		int ret = words_to_u8string(
 			editor,
 			words + 1,
 			n - 1,
-			&filename
+			&path
 		);
 
 		if (ret < 0) {
@@ -1876,22 +2162,27 @@ int editor_handle_cmd
 
 		// it's an error to try to create
 		// an existing file
-		if (editor_has_filename(editor, filename) >= 0) {
+		if (editor_has_file(editor, path) >= 0) {
 			prompt_init(
 				&editor->status_bar,
 				PROMPT_FILE_EXISTS_INTERNALLY,
 				PT_INFO
 			);
 
-			free(filename);
+			free(path);
 			goto cleanup;
 		}
 
 		editor_create_new_file(editor, 0);
 		editor->actual_file->internal = 0;
-		editor->actual_file->file.filename = strdup(filename);
+		
+		file_set_name(
+			&editor->actual_file->file,
+			path,
+			0
+		);
 
-		if (file_exists(filename)) {
+		if (file_exists(path)) {
 			prompt_init(
 				&editor->status_bar,
 				PROMPT_HAS_EQUAL_FILE,
@@ -1905,7 +2196,7 @@ int editor_handle_cmd
 			editor_prompt_init(editor);
 		}
 
-		free(filename);
+		free(path);
 
 		goto cleanup;
 	}
@@ -1918,21 +2209,21 @@ int editor_handle_cmd
 			goto cleanup;
 		}
 
-		char* filename;
+		char* path;
 		int ret = words_to_u8string(
 			editor,
 			words + 1,
 			n - 1,
-			&filename
+			&path
 		);
 
 		if (ret < 0) {
 			goto cleanup;
 		}
 
-		ssize_t index = editor_has_filename(editor, filename);
+		ssize_t index = editor_has_file(editor, path);
 
-		free(filename);
+		free(path);
 
 		if (index < 0) {
 			prompt_init(
@@ -1958,21 +2249,21 @@ int editor_handle_cmd
 			goto cleanup;
 		}
 
-		char* filename;
+		char* path;
 		int ret = words_to_u8string(
 			editor,
 			words + 1,
 			n - 1,
-			&filename
+			&path
 		);
 
 		if (ret < 0) {
 			goto cleanup;
 		}
 
-		ssize_t index = editor_has_filename(editor, filename);
+		ssize_t index = editor_has_file(editor, path);
 
-		free(filename);
+		free(path);
 
 		if (index < 0) {
 			prompt_init(
@@ -1993,38 +2284,87 @@ int editor_handle_cmd
 	/// --- OPEN ---
 	if (strcmp(words[0], open_cmd.name) == 0) {
 		if (n == 1) {
-			prompt_init(
-				&editor->status_bar,
-				PROMPT_NO_ARGS,
-				PT_INFO
+			char cwd[PATH_MAX_LENGTH];
+
+			if (!getcwd(cwd, sizeof(cwd))) {
+				prompt_init(
+					&editor->status_bar,
+					strerror(errno),
+					PT_INFO
+				);
+
+				goto cleanup;
+			}
+
+			DIR* dir = opendir(cwd);
+
+			if (!dir) {
+				prompt_init(
+					&editor->status_bar,
+					strerror(errno),
+					PT_INFO
+				);
+
+				goto cleanup;
+			}
+
+			Vector content;
+			vector_init(
+				&content, 
+				sizeof(u32string), 
+				u32string_destructor
 			);
+
+			u32string u32cwd = u32string_from(cwd);
+			u32string_push(&u32cwd, U'/');
+			vector_push(&content, &u32cwd);
+
+			u32string parent = u32string_from("..");
+			vector_push(&content, &parent);
+
+			get_dir_content(dir, &content);
+
+			closedir(dir);
+
+			WindowOptions options = {
+				.pos_type = WINDOWPOS_CENTRALIZED,
+				.sw = 0.5,
+				.sh = 0.5,
+				.tsize = editor->tsize,
+				.tab_size = editor->actual_file->file.tab_size,
+				.on_select = on_select_open_file				
+			};
+
+			editor->window = window_new(&options);
+			editor->has_window = 1;
+			editor->window.content = content;
 
 			goto cleanup;
 		}
 
-		char* filename;
+		char* path;
 		int ret = words_to_u8string(
 			editor,
 			words + 1,
 			n - 1,
-			&filename
+			&path
 		);
 
 		if (ret < 0) {
 			goto cleanup;
 		}
 
-		ssize_t index = editor_has_filename(editor, filename);
+		ssize_t index = editor_has_file(editor, path);
 
 		if (index >= 0) {
 			editor_change_actual_file(editor, index);
 		}
 
 		else {
-			editor_open_file(editor, filename, 0);
+			editor_open_file(editor, path, 0);
 		}
 
-		free(filename);
+		free(path);
 
 		goto cleanup;
 	}
@@ -2580,10 +2920,6 @@ int editor_handle_cmd
 				editor_file_set_readonly(
 					editor->actual_file);
 
-				if (editor->config.use_autocomplete) {
-					trie_free(&editor->actual_file->words);
-				}
-
 				goto cleanup;
 			}
 
@@ -2598,17 +2934,6 @@ int editor_handle_cmd
 						PROMPT_PERM_DENIED,
 						PT_INFO
 					);
-				}
-
-				else {
-					if (editor->config.use_autocomplete) 
-					{
-						editor_file_sync(
-							editor->actual_file,
-							editor->config.use_autocomplete,
-							&editor->result
-						);				
-					}
 				}
 
 				goto cleanup;
@@ -2661,11 +2986,17 @@ int editor_handle_cmd
 
 		if (strcmp(arg, "language") == 0) {
 			if (n == 2) {
-				prompt_init(
-					&editor->status_bar,
-					PROMPT_INSUFFICIENT_ARGS,
-					PT_INFO
-				);
+				if (editor->actual_file->language) {
+					editor->actual_file->language = NULL;
+				}
+
+				if (editor->actual_file->lexer) {
+					editor->actual_file->lexer = NULL;
+
+					file_destroy_tokens(
+						&editor->actual_file->file
+					);
+				}
 
 				goto cleanup;
 			}
@@ -2689,16 +3020,6 @@ int editor_handle_cmd
 			
 			editor->actual_file->tokenized = 1;
 			editor_create_syntax(editor);
-						
-			if (editor->config.use_autocomplete &&
-				!editor->actual_file->readonly) 
-			{
-				editor_file_sync(
-					editor->actual_file,
-					editor->config.use_autocomplete,
-					&editor->result
-				);				
-			}
 
 			goto cleanup;
 		}
@@ -2832,7 +3153,7 @@ int editor_handle_cmd
 			.sw = 0.5,
 			.sh = 0.5,
 			.tsize = editor->tsize,
-			.tab_size = editor->config.tab_size,
+			.tab_size = editor->actual_file->file.tab_size,
 			.on_select = on_select_goto_file
 		};
 
@@ -2848,14 +3169,47 @@ int editor_handle_cmd
 			u32string name;
 
 			if (ef->type == EDITOR_FILE_PROTOTYPE) {
-				assert(ef->proto_data.options.filename != NULL);
-
-				name = u32string_from(ef->proto_data.options.filename);
+				assert(ef->proto_data.options.path != NULL);
+				
+				char filename[PATH_MAX_LENGTH];
+				
+				get_filename_after_last_slash(
+					filename,
+					ef->proto_data.options.path
+				);
+				
+				ssize_t index = editor_has_equal_filename(
+					editor,
+					filename,
+					i
+				);
+				
+				if (index >= 0) {
+					name = u32string_from(
+						ef->proto_data.options.path
+					);
+				}
+				
+				else {
+					name = u32string_from(filename);
+				}
 			}
 
 			else {
 				if (ef->file.filename) {
-					name = u32string_from(ef->file.filename);
+					ssize_t index = editor_has_equal_filename(
+						editor,
+						ef->file.filename,
+						i
+					);
+					
+					if (index >= 0) {
+						name = u32string_from(ef->file.path);
+					}
+					
+					else {
+						name = u32string_from(ef->file.filename);
+					}
 				}
 
 				else {
@@ -2916,7 +3270,7 @@ int editor_handle_cmd
 			.sw = 0.2,
 			.sh = 0.5,
 			.tsize = editor->tsize,
-			.tab_size = editor->config.tab_size,
+			.tab_size = editor->actual_file->file.tab_size,
 			.on_select = on_select_change_theme
 		};
 
@@ -2982,8 +3336,15 @@ int editor_handle_cmd
 		if (!editor->actual_file->new_file) {
 			editor_file_sync(
 				editor->actual_file,
-				editor->config.use_autocomplete,
 				&editor->result
+			);
+		}
+
+		else {
+			prompt_init(
+				&editor->status_bar,
+				"operation denied: file only exists in the editor",
+				PT_INFO
 			);
 		}
 

@@ -13,6 +13,18 @@ static size_t draw_textu8
 	size_t horizontal_limit
 );
 
+static size_t interval_overlap_width
+(
+	size_t a_begin, size_t a_end,
+	size_t b_begin, size_t b_end
+)
+{
+	size_t begin = MAX(a_begin, b_begin);
+	size_t end = MIN(a_end, b_end);
+
+	return MAX(end - begin, 0);
+}
+
 void window_draw
 (
 	const Window* w,
@@ -24,6 +36,9 @@ void window_draw
 	size_t max_width = w->tsize.cols;
 	size_t max_height = w->tsize.rows;
 
+	size_t width = window_width(w);
+	size_t height = window_height(w);
+
 	if (pos.x > max_width || pos.y > max_height) {
 		return;
 	}
@@ -33,19 +48,19 @@ void window_draw
 	write_color(&color->border);
 	u32_print_cp(UP_LEFT);
 
-	size_t screen_rows = MIN(max_height - pos.y, window_height(w));
-	size_t screen_cols = MIN(max_width - pos.x, window_width(w));
+	size_t screen_rows = MIN(max_height - pos.y, height);
+	size_t screen_cols = MIN(max_width - pos.x, width);
 
 	size_t middle;
 	char tmp[64];
 
 	if (w->view.row_offset > 0) {
 		sprintf(tmp, "+%zu", w->view.row_offset);
-		middle = (window_width(w) - strlen(tmp)) / 2;
+		middle = (width - strlen(tmp)) / 2;
 	}
 
 	else {
-		middle = window_width(w);
+		middle = width; // never reach
 		tmp[0] = '\0';
 	}
 
@@ -58,12 +73,15 @@ void window_draw
 		u32_print_cp(HORIZONTAL);
 	}
 
-	if (pos.x + window_width(w) <= max_width) {
+	if (pos.x + width <= max_width) {
 		u32_print_cp(UP_RIGHT);
 	}
 
 
 	const Vector* content = &w->content;
+
+	uint32_t u32buf[screen_cols];
+	size_t codepoints = 0;
 
 	for (size_t y = 0; y < screen_rows; y++) {
 		move_terminal_cursor(pos.x, pos.y + y + 1);
@@ -83,26 +101,88 @@ void window_draw
 			}
 
 			const u32string* text = vector_get_const(content, window_row);
+			size_t size = u32string_size(text);
 
-			size_t printed = u32string_print_range(
-				text,
-				w->view.col_offset,
-				screen_cols
-			);
+			size_t remaining = screen_cols;
+			size_t cursor_screen_x = 0;
 
-			size_t remaining = screen_cols - printed;
+			for (size_t x = 0; x < size; x++) {
+				uint32_t c = u32string_char(text, x);
 
-			for (size_t i = 0; i < remaining; i++) {
-				u32_print_cp(U' ');
+				size_t width = char_screen_width(
+					c,
+					cursor_screen_x,
+					w->tab_size
+				);
+
+				if (cursor_screen_x + width <= w->view.col_offset) {
+					cursor_screen_x += width;
+					continue;
+				}
+
+				if (cursor_screen_x >= w->view.col_offset + screen_cols) {
+					if (codepoints > 0) {
+						u32_print(u32buf, codepoints);
+						codepoints = 0;
+					}
+
+					remaining = 0;
+
+					break;
+				}
+
+				// substitutes ' ' by '.'
+				if (c == U' ') {
+					u32buf[codepoints++] = ' ';
+				}
+
+				// print on screen
+				else if (c == U'\t') {
+					size_t visible = interval_overlap_width(
+						cursor_screen_x, cursor_screen_x + width,
+						w->view.col_offset,
+						w->view.col_offset + screen_cols
+					);
+
+					uint32_t to_print = ' ';
+
+					for (size_t i = 0; i < visible; i++) {
+						u32buf[codepoints++] = to_print; 
+					}
+				}
+
+				else {
+					u32buf[codepoints++] = c;
+				}
+
+				if (x == size - 1 || codepoints == size) {
+					u32_print(u32buf, codepoints);
+
+					codepoints = 0;
+				}
+
+				cursor_screen_x += width;
+
+				if (remaining >= width) {
+					remaining -= width;
+				}
+			}
+
+			if (remaining > 0) {
+				char buf[remaining];
+				memset(buf, ' ', remaining);
+
+				write(STDOUT_FILENO, buf, remaining);
 			}
 		}
 
 		else {
 			write_color(&color->text);
 
-			for (size_t j = 0; j < screen_cols; j++) {
-				u32_print_cp(U' ');
-			}
+			char buf[screen_cols];
+			memset(buf, ' ', screen_cols);
+
+			write(STDOUT_FILENO, buf, screen_cols);
 		}
 
 		reset_color();

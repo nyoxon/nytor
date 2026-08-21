@@ -4,10 +4,12 @@
 #include <unistd.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 #include "util/types/vector.h"
 
-void u32string_vector_destroy(void* ptr);
+void u32string_destructor(void* ptr);
+void u32string_cloner(const void* src, void* dst);
 
 typedef struct {
 	Vector text;
@@ -181,5 +183,9 @@ int u32_isspace(uint32_t c);
 void u32_print_cp(uint32_t cp);
 void u32_print(const uint32_t* string, size_t size);
 
+
+// djb2
+size_t hash_u32string(const void* ptr);
+bool equals_u32string(const void* a, const void* b);
 
 #endif

@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <unistd.h>
 
+#define STACK_BUF_SIZE 4096
+
 #include "util/types/u32string.h"
 
 u32string u32string_new() {
@@ -112,7 +114,7 @@ void u32string_free(u32string* string) {
 	vector_free(&string->text);
 }
 
-void u32string_vector_destroy(void* ptr) {
+void u32string_destructor(void* ptr) {
 	u32string* string = ptr;
 
 	u32string_free(string);
@@ -432,6 +434,13 @@ u32string u32string_clone(const u32string* string) {
 	}
 
 	return out;
+}
+
+void u32string_cloner(const void* src, void* dst) {
+	const u32string* str1 = src;
+	u32string* str2 = dst;
+
+	*str2 = u32string_clone(str1);
 }
 
 ssize_t u32string_strstr
@@ -881,25 +890,40 @@ size_t u32string_print_range(const u32string* string, size_t start, size_t n) {
 	}
 
 	int len;
-
-	char* buf = malloc(4 * n * sizeof(*buf));
-
-	if (!buf) {
-		return 0;
-	}
-
 	size_t bytes = 0;
 
-	for (size_t i = start; i < start + n; i++) {
-		len = u32_encode(u32string_char(string, i), buf + bytes);
+	if (4 * n <= STACK_BUF_SIZE) {
+		char buf[STACK_BUF_SIZE];
 
-		bytes += (size_t) len;
+		for (size_t i = start; i < start + n; i++) {
+			len = u32_encode(u32string_char(string, i), buf + bytes);
+
+			bytes += (size_t) len;
+		}
+
+		write(STDOUT_FILENO, buf, bytes);
 	}
 
-	write(STDOUT_FILENO, buf, bytes);
+	// malloc fallback
+	else {
+		char* buf = malloc(4 * n * sizeof(*buf));
 
-	free(buf);
-	return n;
+		if (!buf) {
+			return 0;
+		}
+
+		for (size_t i = start; i < start + n; i++) {
+			len = u32_encode(u32string_char(string, i), buf + bytes);
+
+			bytes += (size_t) len;
+		}
+
+		write(STDOUT_FILENO, buf, bytes);
+
+		free(buf);		
+	}
+
+	return bytes;
 }
 
 size_t u32string_print(const u32string* string) {
@@ -922,7 +946,7 @@ void u32_print(const uint32_t* string, size_t size) {
 		return;
 	}
 
-	char buf[4 * size];
+	char buf[4 * size]; // VLA bla and blue
 
 	size_t bytes = 0;
 	int len;
@@ -1028,4 +1052,30 @@ void u32ncpy
 	for (size_t i = 0; i < end; i++) {
 		dst[i] = src[i];
 	}
+}
+
+
+/// ---  HASH_TABLE CALLBACKS  ---
+
+// djb2
+size_t hash_u32string(const void* ptr) {
+	const u32string* string = ptr;
+	size_t size = u32string_size(string);
+
+	size_t hash = 5381;
+	uint32_t c;
+
+	size_t x = 0;
+	while (x < size && (c = u32string_char(string, x++))) {
+		hash = hash * 33 + c;
+	}
+
+	return hash;
+}
+
+bool equals_u32string(const void* a, const void* b) {
+	const u32string* str1 = a;
+	const u32string* str2 = b;
+
+	return u32string_equal(str1, str2);
 }

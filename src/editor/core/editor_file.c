@@ -48,59 +48,35 @@ int editor_file_open
 
 	EditorFileOptions options = ef->proto_data.options;
 
-	const char* filename = options.filename;
+	const char* path = options.path;
 	size_t tab_size = options.default_tab_size;
 	int use_spaces = options.default_use_spaces;
 	int readonly = options.readonly;
 	int inotify_fd = options.inotify_fd;
-	int use_autocomplete = options.use_autocomplete;
 
 	ef->lexer = NULL;
 	ef->language = NULL;
 	ef->tokenized = 0;
-
-
-
-	/// --- LOAD PLUGINS ---
-	editor_file_set_lang_plugin(
-		ef,
-		filename,
-		lang_plugins_data);
-
-
-
-	/// --- AUTOCOMPLETE ---
-	Trie* trie = NULL;
-
-	if (use_autocomplete && !readonly) {
-		trie = &ef->words;
-
-		trie->root = trie_node_create();
-	}
-
-	else {
-		ef->words.root = NULL;
-	}
-
-	IsWordChar is_word_char = is_utf_word_char;
-
-	if (use_autocomplete &&
-		ef->language && 
-		ef->language->rules &&
-		ef->language->rules->is_word_char)
+	
 	{
-		is_word_char = ef->language->rules->is_word_char;
+		char filename[PATH_MAX_LENGTH];
+	
+		if (path) {
+			get_filename_after_last_slash(filename, path);
+		}
+	
+		/// --- LOAD PLUGINS ---
+		editor_file_set_lang_plugin(
+			ef,
+			(path) ? filename : path,
+			lang_plugins_data);
 	}
-
-
 
 	/// --- FILE_OPEN ---
 	FileOptions foptions = {
-		.filename = filename,
+		.path = path,
 		.use_spaces = use_spaces,
-		.tab_size = tab_size,
-		.trie = trie,
-		.is_word_char = is_word_char
+		.tab_size = tab_size
 	};
 
 	if (file_open(
@@ -112,15 +88,14 @@ int editor_file_open
 	}
 
 
-
 	/// --- INOTIFY ---
-	if (filename != NULL) {
+	if (path != NULL) {
 		editor_file_set_watcher(
 			ef, 
-			filename, 
+			path, 
 			inotify_fd);
 
-		int exists = file_exists(filename);
+		int exists = file_exists(path);
 
 		if (exists) {
 			editor_file_update_metadata(ef);
@@ -147,8 +122,8 @@ int editor_file_open
 
 
 	/// --- UNDO/REDO STACKS ---
-	if (filename && !ef->file.dirty) {
-		int fd = open(filename, O_RDWR);
+	if (path && !ef->file.dirty) {
+		int fd = open(path, O_RDWR);
 		size_t capacity;
 
 		if (fd == -1) {
@@ -232,8 +207,6 @@ void editor_file_free(EditorFile* ef) {
 		u32string_free(&ef->replace_text);
 		u32string_free(&ef->replace_pattern);
 	}
-
-	trie_free(&ef->words);
 }
 
 static ssize_t check_has_extension
@@ -413,7 +386,7 @@ void editor_file_del_watcher(EditorFile* ef, int inotify_fd) {
 void editor_file_update_metadata(EditorFile* ef) {
 	struct stat st;
 
-	if (stat(ef->file.filename, &st) == 0) {
+	if (stat(ef->file.path, &st) == 0) {
 		ef->metadata.inode = st.st_ino;
 		ef->metadata.mtime = st.st_mtim;
 		ef->metadata.size = st.st_size;
@@ -423,7 +396,7 @@ void editor_file_update_metadata(EditorFile* ef) {
 void handle_file_modified(EditorFile* ef) {
 	struct stat st;
 
-	if (stat(ef->file.filename, &st) < 0) {
+	if (stat(ef->file.path, &st) < 0) {
 		ef->externally_modified = 1;
 		return;
 	}
@@ -524,10 +497,13 @@ void handle_file_create(EditorFile* ef, int inotify_fd) {
 void editor_file_sync
 (
 	EditorFile* ef,
-	int use_autocomplete,
 	Result* result
 ) 
 {
+	if (!ef->file.filename || ef->new_file) {
+		return;
+	}
+
 	ef->new_file = 0;
 
 	ef->cursor = (Cursor) { POS_ZERO, 0 };
@@ -535,31 +511,8 @@ void editor_file_sync
 	stack_clear(&ef->undo);
 	stack_clear(&ef->redo);
 
-	if (use_autocomplete && !ef->readonly) {
-		trie_free(&ef->words);
-		ef->words.root = trie_node_create();
-	}
-
-	if (ef->replace) {
-		u32string_free(&ef->replace_text);
-		u32string_free(&ef->replace_pattern);
-	}
-
-	IsWordChar is_word_char = 
-		(ef->language && 
-			ef->language->rules && 
-			ef->language->rules->is_word_char)
-				? ef->language->rules->is_word_char
-				: is_utf_word_char;
-
-	Trie* trie = (use_autocomplete && !ef->readonly)
-		? &ef->words
-		: NULL;
-
 	file_sync(
 		&ef->file, 
-		trie,
-		is_word_char, 
 		result);
 
 	editor_file_update_metadata(ef);
@@ -654,26 +607,46 @@ end:
 	return 0;
 }
 
+// void editor_file_reload_words(EditorFile* ef) {
+// 	if (ef->type == EDITOR_FILE_PROTOTYPE || ef->readonly) {
+// 		return;
+// 	}
 
-/// --- AUTOCOMP TRIE ---
-void editor_file_update_word_frequency
-(
-	EditorFile* ef,
-	const uint32_t* word,
-	size_t size,
-	int increment
-)
-{
-	if (size == 0 || !ef->words.root) {
-		return;
-	}
+// 	trie_free(&ef->words);
 
-	if (increment > 0) {
-		trie_insert(&ef->words, word, size);
-	}
+// 	ef->words.root = trie_node_create();
 
-	else if (increment < 0) {
-		trie_remove(&ef->words, word, size);
-	}
-}
+// 	IsWordChar is_word =
+// 		(ef->language && 
+// 			ef->language->rules &&
+// 			ef->language->rules->is_word_char)
+// 		? ef->language->rules->is_word_char
+// 		: is_utf_word_char;
 
+// 	for (size_t y = 0; y < file_num_lines(&ef->file); y++) {
+// 		const u32string* line = file_get_line_text(&ef->file, y);
+// 		size_t size = u32string_size(line);
+
+// 		size_t start = 0;
+
+// 		for (size_t x = 0; x < size; x++) {
+// 			uint32_t cp = u32string_char(line, x);
+
+// 			if (!is_word(cp)) {
+// 				if (x > start) {
+// 					trie_insert(&ef->words,
+// 						u32string_into_ptr_const(line) + start,
+// 						x - start);
+// 				}
+
+// 				start = x + 1;
+// 			}
+// 		}
+
+// 		if (start < size) {
+// 			trie_insert(&ef->words,
+// 				u32string_into_ptr_const(line) + start,
+// 				size - start);			
+// 		}
+// 	}
+// }

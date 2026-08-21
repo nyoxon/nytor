@@ -1,9 +1,8 @@
 #include <stdio.h>
-asd😅
 comentariow em blocow
 asd
 asdasds
-asd
+aasd
 porra
 asd.tudo;
 asd->tudo;

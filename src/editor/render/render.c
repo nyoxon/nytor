@@ -334,7 +334,6 @@ static void render_utf
 			}
 
 			else {
-				u32buf[codepoints++] = c;
 				if (!u32_is_printable(c)) {
 					u32_print(u32buf, codepoints);
 					codepoints = 0;
@@ -349,7 +348,7 @@ static void render_utf
 				}
 
 				else {
-
+					u32buf[codepoints++] = c;
 				}
 			}
 

@@ -13,7 +13,6 @@ void vector_init(Vector* v, size_t elem_size, Destructor destroy) {
 	v->capacity = 0;
 	v->elem_size = elem_size;
 	v->destroy = destroy;
-	// v->printer = NULL;
 }
 
 static void vector_assert_non_null(const Vector* v) {
@@ -142,7 +141,9 @@ const void* vector_get_const(const Vector* v, size_t index) {
 
 
 void vector_free(Vector* v) {
-	vector_assert_non_null(v);
+	if (!v || !v->data) {
+		return;
+	}
 
 	if (v->destroy) {
 		for (size_t i = 0; i < v->size; i++) {
@@ -158,14 +159,10 @@ void vector_free(Vector* v) {
 	v->capacity = 0;
 }
 
-void vector_clear(Vector* v) {
-	vector_assert_non_null(v);
+void vector_destructor(void* ptr) {
+	Vector* vector = ptr;
 
-	vector_free(v);
-
-	v->data = NULL;
-	v->size = 0;
-	v->capacity = 0;
+	vector_free(vector);
 }
 
 
@@ -340,4 +337,57 @@ int vector_swap(Vector* v, size_t i, size_t j) {
 	free(tmp);
 
 	return 0;
+}
+
+
+// propagates the cloner if it exists
+void vector_clone(const Vector* src, Vector* dst) {
+	vector_assert_non_null(src);
+	vector_assert_non_null(dst);
+
+	size_t elem_size = src->elem_size;
+
+	if (src->capacity == 0) {
+		return;
+	}
+
+	dst->data = malloc(src->capacity * elem_size);
+
+	if (!dst->data) {
+		return;
+	}
+
+	dst->size = src->size;
+	dst->elem_size = elem_size;
+	dst->capacity = src->capacity;
+	dst->destroy = src->destroy;
+	dst->clone = src->clone;
+
+	if (src->clone) {
+		for (size_t i = 0; i < src->size; i++) {
+			const void* src_elem = vector_get_const(
+				src,
+				i
+			);
+
+			void* dst_elem = vector_get(dst, i);
+
+			src->clone(src_elem, dst_elem);
+		}
+	}
+
+	else {
+		memcpy(
+			dst->data,
+			src->data,
+			src->size * elem_size
+		);
+	}
+}
+
+void vector_cloner(const void* src, void* dst) {
+	const Vector* vec1 = src;
+	Vector* vec2 = dst;
+
+	vector_clone(vec1, vec2);
 }

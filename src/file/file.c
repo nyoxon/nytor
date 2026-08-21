@@ -9,10 +9,32 @@
 
 #include "file/file.h"
 #include "terminal/input.h"
+#include "util/files.h"
 
 static void vector_line_destroy(void* ptr) {
 	Line* line = (Line*) ptr;
 	line_free(line);
+}
+
+void file_set_name(File* file, const char* path, int destroy) {
+	if (destroy) {
+		free(file->path);
+		free(file->filename);
+	}
+	
+	if (!path) {
+		file->path = file->filename = NULL;
+	}
+	
+	else {
+		file->path = strdup(path);
+		
+		char filename[PATH_MAX_LENGTH];
+		
+		get_filename_after_last_slash(filename, path);
+		
+		file->filename = strdup(filename);
+	}
 }
 
 void file_init(File* file) {
@@ -20,6 +42,7 @@ void file_init(File* file) {
 		return;
 	}
 
+	file->path = NULL;
 	file->filename = NULL;
 	vector_init(&file->lines, sizeof(Line), vector_line_destroy);
 }
@@ -28,6 +51,7 @@ void file_free(File* file) {
 	if (!file) { return; }
 
 	free(file->filename);
+	free(file->path);
 	vector_free(&file->lines);
 }
 
@@ -107,17 +131,15 @@ void file_push(File* file, Line* line) {
 // open and read a fd
 static uint32_t* read_file
 (
-	const char* filename, // a non-null pointer
+	const char* path, // a non-null pointer
 	ssize_t* size, // a non null pointer
-	Trie* trie,
-	IsWordChar is_word_char,
 	Result* result // a non null pointer
 ) 
 {
 	// return = NULL and size = -1 -> error
 	// return = NULL and size = 0 -> empty file
 
-	int fd = open(filename, O_RDONLY);
+	int fd = open(path, O_RDONLY);
 
 	if (fd < 0) {
 		if (result) {
@@ -131,7 +153,7 @@ static uint32_t* read_file
 				char reason[512];
 				sprintf(reason, 
 					"read_file (%s): access denied", 
-					 filename);
+					 path);
 
 				result_set_reason(result, reason);
 				result->type = ERROR_FILE_HANDLE;           
@@ -229,10 +251,6 @@ static uint32_t* read_file
 		data = tmp;
 	}
 
-	if (trie) {
-		trie_build(trie, data, *size, is_word_char);
-	}
-
 	if (result) {
 		result_ok(result);
 	}
@@ -251,9 +269,25 @@ static int split_lines
 	size_t start = 0;
 
 	while (start < size) {
+		int crlf = 0;
 		size_t end = start;
 
-		while (end < size && data[end] != U'\n') {
+		for (;;) {
+			if (end >= size) {
+				break;
+			}
+
+			if (data[end] == '\n') {
+				break;
+			}
+
+			if (data[end] == '\r' && end < size - 1 &&
+				data[end + 1] == '\n')
+			{
+				crlf = 1;
+				break;
+			}
+
 			end++;
 		}
 
@@ -267,6 +301,10 @@ static int split_lines
 		file_push(file, &line);
 
 		start = end + 1;
+
+		if (crlf) {
+			start++;
+		}
 	}
 
 	if (size > 0) {
@@ -285,6 +323,7 @@ static void file_create_empty
 {
 	file_init(file);
 	file->filename = NULL;
+	file->path = NULL;
 	file->dirty = 1;
 	file->has_dirty_line = 0;
 	file->tab_size = tab_size;
@@ -308,13 +347,11 @@ int file_open
 	assert(file != NULL);
 	assert(options != NULL);
 
-	const char* filename = options->filename;
+	const char* path = options->path;
 	size_t tab_size = options->tab_size;
 	int use_spaces = options->use_spaces;
-	Trie* trie = options->trie;
-	IsWordChar is_word_char = options->is_word_char;
-
-	if (!filename) {
+	
+	if (!path) {
 		file_create_empty(file, tab_size, use_spaces);
 
 		result_ok(result);
@@ -325,15 +362,13 @@ int file_open
 	ssize_t size = -1;
 
 	uint32_t* data = read_file(
-		filename, 
+		path, 
 		&size,
-		trie,
-		is_word_char,
 		result);
-
+	
 	if (!data) {
 		if (result->type == ERROR_FILE_DOES_NOT_EXIST) {
-			int fd = open(filename, O_CREAT | O_EXCL | O_RDWR, 0644);
+			int fd = open(path, O_CREAT | O_EXCL | O_RDWR, 0644);
 
 			if (fd < 0) {
 				perror("sys_open");
@@ -346,11 +381,12 @@ int file_open
 
 			else {
 				close(fd);
-				unlink(filename);
+				unlink(path);
 			}
 
 			file_create_empty(file, tab_size, use_spaces);
-			file->filename = strdup(filename);
+			
+			file_set_name(file, path, 0);
 
 			result_ok(result);
 
@@ -359,9 +395,9 @@ int file_open
 
 		if (size == 0) {
 			file_create_empty(file, tab_size, use_spaces);
-			file->filename = strdup(filename);
-			file->dirty = 0;
-			file->has_dirty_line = 0;
+			file_set_name(file, path, 0);
+			
+			file->dirty = 0; // empty, but already exists
 
 			return EIE_OK;
 		}
@@ -370,11 +406,12 @@ int file_open
 	}
 
 	file_init(file);
-	file->filename = strdup(filename);
 	file->dirty = 0;
 	file->has_dirty_line = 1;
 	file->tab_size = tab_size;
 	file->use_spaces = use_spaces;
+	
+	file_set_name(file, path, 0);
 
 	if (split_lines(file, data, size) < 0) {
 		free(data);
@@ -529,8 +566,6 @@ void file_convert_tabs_to_spaces(File* file) {
 void file_sync
 (
 	File* file, 
-	Trie* trie, 
-	IsWordChar is_word_char,
 	Result* result
 )
 {
@@ -539,10 +574,8 @@ void file_sync
 
 	ssize_t size;
 	uint32_t* data = read_file(
-		file->filename, 
+		file->path, 
 		&size,
-		trie,
-		is_word_char, 
 		result);
 
 	file->dirty = 0;
@@ -574,7 +607,7 @@ int file_save(File* file, Result* result) {
 	}
 
 	// create if don't exist
-	int fd = open(file->filename, O_WRONLY | O_TRUNC | O_CREAT, 0644);
+	int fd = open(file->path, O_WRONLY | O_TRUNC | O_CREAT, 0644);
 
 	if (fd < 0) {
 		if (result) {
@@ -668,6 +701,16 @@ void file_create_tokens(File* file, struct lexer* lexer) {
 	}
 
 	file->has_dirty_line = 0;
+}
+
+
+void file_destroy_tokens(File* file) {
+	for (size_t i = 0; i < file->lines.size; i++) {
+		Line* line = vector_get(&file->lines, i);
+
+		// clean the vector, but keeps the destroyer
+		vector_free(&line->tokens);
+	}
 }
 
 static enum lex_state get_state_before
@@ -1488,10 +1531,6 @@ int file_comment_line
 
 	u32string* line_text = file_get_line_text(file, y);
 
-	if (u32string_is_empty(line_text)) {
-		return EIE_NOT_AN_ERROR;
-	}
-
 	// the tokens must change their inner positions
 	file_set_line_dirty(file, y);
 
@@ -1570,6 +1609,7 @@ static int all_lines_comment
 		u32string* line_text = file_get_line_text(file, i);
 
 		if (u32string_is_empty(line_text)) {
+			small = 0;
 			continue;
 		}
 
@@ -1637,6 +1677,10 @@ int file_comment_selection
 )
 {
 	if (!comment_fmt || strlen(comment_fmt) == 0) {
+		if (move_cursor) {
+			*move_cursor = 0;
+		}
+
 		return EIE_NOT_FATAL_ERROR;
 	}
 
@@ -1678,10 +1722,6 @@ int file_comment_selection
 
 	for (size_t i = a.y; i < b.y + 1; i++) {
 		u32string* line_text = file_get_line_text(file, i);
-
-		if (u32string_is_empty(line_text)) {
-			continue;
-		}
 
 		if (comment) {
 			u32string_push(&u32_comment_fmt, ' ');
