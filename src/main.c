@@ -36,7 +36,8 @@ static int parse_args
 (
 	int argc, 
 	char* argv[],
-	int* debug_mode
+	int* debug_mode,
+	int* start_readonly
 );
 
 int main(int argc, char* argv[]) {
@@ -44,9 +45,9 @@ int main(int argc, char* argv[]) {
 
 
 	// --- PARSE CLI ARGUMENTS ---
-	int debug_mode = 0;
+	int debug_mode = 0, start_readonly = 0;
 
-	int ret = parse_args(argc, argv, &debug_mode);
+	int ret = parse_args(argc, argv, &debug_mode, &start_readonly);
 
 	if (ret == 1) { // program does not need to run
 		return 0;
@@ -69,7 +70,8 @@ int main(int argc, char* argv[]) {
 		&editor, 
 		filenames,
 		argc - optind,
-		debug_mode) < 0)
+		debug_mode,
+		start_readonly) < 0)
 	{
 		if (editor.result.type != ERROR_OK) {
 			fprintf(stderr, editor.result.reason);
@@ -268,30 +270,34 @@ static void print_help() {
 	printf("\n--- [ARGUMENTS] --- \n\n");
 	printf("  --help		-> prints this message\n\n");
 	printf("  --debug 		-> debug_mode\n\n");
+	printf("  --readonly		-> open the passed files as readonly\n\n");
 	printf("  --version		-> shows the version of the program\n\n");
 	printf("note: you must pass all arguments before passing a file;\n");
 	printf("otherwise, the passed argument will be treated as a file\n\n");
 	printf("see the man page if you have some free time:\n");
-	printf("\"man nyt\" or \"man manual/nyt.1\" after cloning github.com/nyoxon/nytor\n");
+	printf("\"man nyt\" or \"man manual/nyt.1\" after cloning https://github.com/nyoxon/nytor\n");
 }
 
 static int parse_args
 (
 	int argc, 
 	char* argv[],
-	int* debug_mode
+	int* debug_mode,
+	int* start_readonly
 ) 
 {
 	int opt;
 
 	struct option long_opts[] = {
-		{"debug", no_argument, 0, 'd'},
-		{"help", no_argument, 0, 'h'},
-		{"version", no_argument, 0, 'v'},
+		{"debug", 		no_argument, 0, 'd'},
+		{"help", 		no_argument, 0, 'h'},
+		{"version", 	no_argument, 0, 'v'},
+		{"readonly", 	no_argument, 0, 'r'},
+
 		{0, 0, 0, 0}
 	};
 
-	while ((opt = getopt_long(argc, argv, "+dvh", long_opts, NULL)) != 1) 
+	while ((opt = getopt_long(argc, argv, "+dvhr", long_opts, NULL)) != 1) 
 	{
 		switch (opt) {
 			case 'd':
@@ -305,6 +311,10 @@ static int parse_args
 			case 'v':
 				printf("nytor %s\n", NYTOR_VERSION);
 				return 1;
+
+			case 'r':
+				*start_readonly = 1;
+				return 0;
 
 			default:
 				return 0;

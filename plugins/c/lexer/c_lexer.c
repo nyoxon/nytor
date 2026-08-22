@@ -1677,11 +1677,19 @@ static size_t c_tokenize_line
 
 		// preprocess
 		if (first_token && i < len && line[i] == '#') {
-			size_t begin = i + 1;
+			size_t begin_line = i;
 			i++;
+			
+			while (i < len && 
+				(isspace((unsigned char) line[i])))
+			{
+				i++;
+			}
+			
+			size_t begin_word = i;
 
 			while (i < len &&
-				((unsigned char) isalnum(line[i]) ||
+				(isalnum((unsigned char) line[i]) ||
 				line[i] == '_')) // TODO
 			{
 				i++;
@@ -1689,18 +1697,36 @@ static size_t c_tokenize_line
 
 			enum highlight hl;
 
-			if (is_preprocessor(line + begin, i - begin)) {
+			if (is_preprocessor(line + begin_word, 
+				i - begin_word)) 
+			{
 				hl = HL_PREPROCESSOR;
+				
+				if (line[begin_word] == U'p') {
+					tokens[ntokens++] = (struct token) {
+						hl,
+						0,
+						len
+					};
+					
+					break;
+				}
 			} else {
 				hl = HL_NORMAL;
 			}
+
+			tokens[ntokens++] = (struct token) {
+				hl,
+				begin_line,
+				begin_line + 1
+			};
 
 			first_token = 0;
 
 			if (hl == HL_PREPROCESSOR) {
 				tokens[ntokens++] = (struct token) {
 					hl,
-					begin - 1,
+					begin_word,
 					i
 				};
 
@@ -1710,7 +1736,7 @@ static size_t c_tokenize_line
 			else {
 				tokens[ntokens++] = (struct token) {
 					hl,
-					begin - 1,
+					begin_word - 1,
 					i
 				};
 			}
@@ -1923,7 +1949,7 @@ static size_t c_tokenize_line
 	}
 
 	if (!state_has_changed && state_out) {
-		*state_out = LEX_STATE_NORMAL;
+		*state_out = state_in;
 	}
 
 	return ntokens;

@@ -103,7 +103,6 @@ void window_draw
 			const u32string* text = vector_get_const(content, window_row);
 			size_t size = u32string_size(text);
 
-			size_t remaining = screen_cols;
 			size_t cursor_screen_x = 0;
 
 			for (size_t x = 0; x < size; x++) {
@@ -125,8 +124,6 @@ void window_draw
 						u32_print(u32buf, codepoints);
 						codepoints = 0;
 					}
-
-					remaining = 0;
 
 					break;
 				}
@@ -162,17 +159,22 @@ void window_draw
 				}
 
 				cursor_screen_x += width;
-
-				if (remaining >= width) {
-					remaining -= width;
-				}
 			}
-
-			if (remaining > 0) {
-				char buf[remaining];
-				memset(buf, ' ', remaining);
-
-				write(STDOUT_FILENO, buf, remaining);
+			
+			size_t screen_x = 
+			(cursor_screen_x > w->view.col_offset)
+				? cursor_screen_x - w->view.col_offset
+				: 0;
+			
+			if (screen_x < screen_cols) {
+				size_t remaining = screen_cols - screen_x;
+				
+				if (remaining > 0) {
+					char buf[remaining];
+					memset(buf, ' ', remaining);
+					
+					write(STDOUT_FILENO, buf, remaining);
+				}
 			}
 		}
 

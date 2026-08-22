@@ -46,7 +46,8 @@ int editor_init
 	Editor* editor,
 	char* filenames[],
 	size_t filename_count,
-	int debug_mode
+	int debug_mode,
+	int start_readonly
 ) 
 {
 	editor->debug_mode = debug_mode;
@@ -127,7 +128,7 @@ int editor_init
 
 			EditorFileOptions options = {
 				.path = filenames[i],
-				.readonly = 0,
+				.readonly = start_readonly,
 				.default_tab_size = editor->config.tab_size,
 				.default_use_spaces = editor->config.use_spaces,
 				.inotify_fd = editor->inotify_fd

@@ -88,6 +88,10 @@ static void get_dir_content(DIR* dir, Vector* content) {
 	}
 }
 
+
+// global because i didn't figure out a better way
+static int openas_readonly = 0;
+
 static WindowResult on_select_open_file(void* userdata) {
 	assert(userdata != NULL);
 
@@ -164,7 +168,7 @@ static WindowResult on_select_open_file(void* userdata) {
 	}
 
 	else {
-		editor_open_file(editor, path, 0);
+		editor_open_file(editor, path, openas_readonly);
 
 		result = WINDOW_CLOSE;
 	}
@@ -638,7 +642,7 @@ const cmd open_cmd = { // man 2 open
 		"Args (optional):\n"
 		" -	filename\n"
 		"------------------------------------------------------------------\n"
-		"Action: opens the file with the specified filename.\n"
+		"Action: opens a file.\n"
 		"------------------------------------------------------------------\n"
 		"More:\n\n"
 		" ---- FILENAME FORMAT ---- \n\n"
@@ -662,11 +666,27 @@ const cmd open_cmd = { // man 2 open
 		"> open \"why name me like \\\"this\"\n"
 		"------------------------------------------------------------------\n"
 		"Errors: any possible returned by the 'open' syscall.\n"
-		"If the third argument is passed, it must be exactly \n"
-		"equal to 'read'\n"
 		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨",
 };
 
+// --- OPENR ---
+const cmd openr = {
+	.name = "openr",
+	.description = 
+		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨\n"
+		"Name: openr\n"
+		"------------------------------------------------------------------\n"
+		"Args: (optional):\n"
+		" -	filename\n"
+		"------------------------------------------------------------------\n"
+		"Action: opens a file as readonly\n"
+		"------------------------------------------------------------------\n"
+		"More: \n\n"
+		"Same as 'open' but set the permission as readonly.\n"
+		"------------------------------------------------------------------\n"
+		"Errors: same as 'open'.\n"
+		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨\n"
+};
 
 // --- SELECT ---
 const cmd select_cmd = { // man 2 select
@@ -1395,6 +1415,7 @@ const cmd COMMANDS[] = {
 	new,
 	newas,
 	open_cmd,
+	openr,
 	close_cmd,
 	close_forced,
 	copy,
@@ -1554,6 +1575,11 @@ static void handle_help(Editor* editor, char* words[], size_t n) {
 		else if (strcmp(words[1], open_cmd.name) == 0) {
 			cb.text = u32string_from(open_cmd.description);
 			sprintf(buf, "%s man", open_cmd.name);
+		}
+
+		else if (strcmp(words[1], openr.name) == 0) {
+			cb.text = u32string_from(openr.description);
+			sprintf(buf, "%s man", openr.name);
 		}
 
 		else if (strcmp(words[1], select_cmd.name) == 0) {
@@ -2282,7 +2308,25 @@ int editor_handle_cmd
 
 
 	/// --- OPEN ---
-	if (strcmp(words[0], open_cmd.name) == 0) {
+	if (strncmp(words[0], open_cmd.name, strlen(open_cmd.name)) == 0) {
+		if (strlen(words[0]) > strlen(open_cmd.name)) {
+			if (strcmp(words[0], openr.name) != 0) {
+				prompt_init(
+					&editor->status_bar,
+					PROMPT_INVALID_COMMAND,
+					PT_INFO
+				);
+
+				goto cleanup;			
+			}
+
+			openas_readonly = 1;
+		}
+
+		else {
+			openas_readonly = 0;
+		}
+
 		if (n == 1) {
 			char cwd[PATH_MAX_LENGTH];
 
@@ -2361,7 +2405,7 @@ int editor_handle_cmd
 		}
 
 		else {
-			editor_open_file(editor, path, 0);
+			editor_open_file(editor, path, openas_readonly);
 		}
 
 		free(path);

@@ -71,7 +71,8 @@ int editor_init
 	Editor* editor,
 	char* filenames[],
 	size_t filename_count,
-	int debug_mode
+	int debug_mode,
+	int start_readonly
 );
 
 void editor_free(Editor* editor);
