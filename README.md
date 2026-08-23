@@ -98,6 +98,7 @@ In addition to those presented above, the editor has several other features, suc
 - Minimal integration with compilers
 - Hexadecimal mode
 - `comment` cmd start operating on block comments as well
+- The `find` functions accept regular expressions
 
 ## Installation
 
@@ -196,9 +197,13 @@ actually used for programming, it's almost impossible to find a non-ASCII
 character, meaning some memory would be wasted.
 I don't necessarily think it's a problem, but i do plan to change the
 storage strategy someday (and consequently, the strategy for access,
-removal, inserting, ..........................................)
+removal, inserting, (..........................................)
 
 The autocomplete algorithm has complexity O(`size of file`).
+
+## Project status
+
+Given the program's simple nature and my goal of creating an editor that is basic yet good enough for my daily use, the `nyt` is technically completely finished, meaning no major changes or features are likely to be added. Future updates will consist mainly of bug fixes, improvements to existing plugins, the addition of new plugins, and possibly some internal optimizations (courageously handling UTF-8 or huge files, for example) that i plan to tackle... who knows when, just for fun (because i don't really think they are needed).
 
 ## Contributing
 
