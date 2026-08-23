@@ -569,7 +569,6 @@ void file_sync
 	Result* result
 )
 {
-
 	vector_free(&file->lines);
 
 	ssize_t size;

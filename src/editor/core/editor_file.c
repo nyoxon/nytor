@@ -410,10 +410,6 @@ void handle_file_modified(EditorFile* ef) {
 }
 
 void handle_file_deleted(EditorFile* ef, int inotify_fd) {
-	if (ef->readonly) {
-		return;
-	}
-
 	// dunno if removing the watcher here is the best approach
 
 	// given that a user, upon realizing the file has been

@@ -3382,6 +3382,10 @@ int editor_handle_cmd
 				editor->actual_file,
 				&editor->result
 			);
+
+			if (editor->result.type == ERROR_OK) {
+				editor->cursor.pos = POS_ZERO;
+			}
 		}
 
 		else {

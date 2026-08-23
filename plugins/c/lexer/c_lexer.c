@@ -100,13 +100,16 @@ static const struct keyword C_KEYWORDS[] = {
 	{"union", 		5, HL_TYPE},
 
 	{"NULL", 		4, HL_CONSTANT},
+	{"nullptr",		7, HL_CONSTANT},
 	{"true",		4, HL_CONSTANT},
 	{"false",		5, HL_CONSTANT},
 
 	{"extern", 		6, HL_SPECIFIER},
 	{"static", 		6, HL_SPECIFIER},
 	{"const", 		5, HL_SPECIFIER},
+	{"constexpr",	9, HL_SPECIFIER},
 	{"sizeof", 		6, HL_SPECIFIER},
+	{"alignof",		7, HL_SPECIFIER},
 	{"volatile", 	8, HL_SPECIFIER},
 	{"inline", 		6, HL_SPECIFIER},
 	{"restrict", 	8, HL_SPECIFIER},
