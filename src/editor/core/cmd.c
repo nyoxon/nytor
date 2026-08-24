@@ -293,14 +293,22 @@ static int find_action
 	}
 
 	case FIND_ALL: {
+		// given the index, the window will show
+		// the interval (index - offset, index + offset)
 		size_t offset = 8;
 		size_t pattern_size = u32string_size(pattern);
 
 		editor_selection_clear(editor);
-		size_t lines = file_num_lines(&editor->actual_file->file);
+		size_t lines = file_num_lines(
+			&editor->actual_file->file
+		);
 
 		Vector matches;
-		vector_init(&matches, sizeof(u32string), u32string_destructor);
+		vector_init(
+			&matches, 
+			sizeof(u32string), 
+			u32string_destructor
+		);
 
 		for (size_t i = 0; i < lines; i++) {
 			const u32string* text = file_get_line_text(
@@ -313,7 +321,11 @@ static int find_action
 			ssize_t index;
 			size_t pos = 0;
 
-			while ((index = u32string_find(text, pos, size, pattern)) >= 0) 
+			while ((index = u32string_find(
+							text, 
+							pos, 
+							size, 
+							pattern)) >= 0) 
 			{
 				char line[i];
 				sprintf(line, "%zu", (size_t) i + 1);
@@ -342,9 +354,9 @@ static int find_action
 					: 0;
 
 				size_t right = 
-					((size_t) index + pattern_size + offset >= size)
-						? size
-						: index + pattern_size + offset;
+				((size_t) index + pattern_size + offset >= size)
+					? size
+					: index + pattern_size + offset;
 
 				u32string_append_raw(
 					&match,

@@ -1020,6 +1020,10 @@ int editor_quit(Editor* editor) {
 		}
 
 		else {
+			if (editor->debug_mode) {
+				log_write(&editor->log, "editor_quit: SUCCESS");
+			}
+
 			return 0;
 		}
 	}

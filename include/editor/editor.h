@@ -24,6 +24,14 @@
 
 #define DEBUG_FILE "debug.ny"
 
+typedef struct {
+	char** filenames;
+	size_t filename_count;
+
+	int debug_mode;
+	int start_readonly;
+} EditorOptions;
+
 // a Editor represents the editor itself
 // it contains the global state of the program
 typedef struct {
@@ -69,10 +77,7 @@ typedef struct {
 int editor_init
 (
 	Editor* editor,
-	char* filenames[],
-	size_t filename_count,
-	int debug_mode,
-	int start_readonly
+	const EditorOptions* eoptions
 );
 
 void editor_free(Editor* editor);

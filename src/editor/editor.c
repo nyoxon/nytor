@@ -44,15 +44,15 @@ static int has_equal_filename
 int editor_init
 (
 	Editor* editor,
-	char* filenames[],
-	size_t filename_count,
-	int debug_mode,
-	int start_readonly
+	const EditorOptions* eoptions
 ) 
 {
-	editor->debug_mode = debug_mode;
+	editor->debug_mode = eoptions->debug_mode;
+	int start_readonly = eoptions->start_readonly;
+	char** filenames = eoptions->filenames;
+	size_t filename_count = eoptions->filename_count;
 
-	if (debug_mode) {
+	if (editor->debug_mode) {
 		log_init(&editor->log, DEBUG_FILE);
 
 		if (editor->log.fd < 0) {
@@ -103,7 +103,7 @@ int editor_init
 
 	/// --- CREATE PROTOTYPES ---
 	if (!filenames) {
-		EditorFileOptions options = {
+		EditorFileOptions efoptions = {
 			.path = NULL,
 			.readonly = 0,
 			.default_tab_size = editor->config.tab_size,
@@ -111,7 +111,7 @@ int editor_init
 			.inotify_fd = editor->inotify_fd
 		};
 
-		EditorFile ef = editor_file_prototype(&options);
+		EditorFile ef = editor_file_prototype(&efoptions);
 
 		vector_push(&editor->files, &ef);
 	}
@@ -126,7 +126,7 @@ int editor_init
 				continue;
 			}
 
-			EditorFileOptions options = {
+			EditorFileOptions efoptions = {
 				.path = filenames[i],
 				.readonly = start_readonly,
 				.default_tab_size = editor->config.tab_size,
@@ -134,7 +134,7 @@ int editor_init
 				.inotify_fd = editor->inotify_fd
 			};
 
-			EditorFile ef = editor_file_prototype(&options);
+			EditorFile ef = editor_file_prototype(&efoptions);
 
 			vector_push(&editor->files, &ef);
 		}

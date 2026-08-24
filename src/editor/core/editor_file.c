@@ -54,6 +54,23 @@ int editor_file_open
 	int readonly = options.readonly;
 	int inotify_fd = options.inotify_fd;
 
+
+	/// --- FILE_OPEN ---
+	FileOptions foptions = {
+		.path = path,
+		.use_spaces = use_spaces,
+		.tab_size = tab_size
+	};
+
+	if (file_open(
+		&ef->file,
+		&foptions,
+		result) < 0)
+	{
+		return -1;
+	}
+
+
 	ef->lexer = NULL;
 	ef->language = NULL;
 	ef->tokenized = 0;
@@ -70,21 +87,6 @@ int editor_file_open
 			ef,
 			(path) ? filename : path,
 			lang_plugins_data);
-	}
-
-	/// --- FILE_OPEN ---
-	FileOptions foptions = {
-		.path = path,
-		.use_spaces = use_spaces,
-		.tab_size = tab_size
-	};
-
-	if (file_open(
-		&ef->file,
-		&foptions,
-		result) < 0)
-	{
-		return -1;
 	}
 
 
@@ -120,60 +122,46 @@ int editor_file_open
 	}
 
 
+	// --- READONLY ---
 
-	/// --- UNDO/REDO STACKS ---
-	if (path && !ef->file.dirty) {
-		int fd = open(path, O_RDWR);
-		size_t capacity;
+	// there is at least read permission, otherwise
+	// the function would have returned at file_open
+	if (!ef->new_file) {
+		int fd = open(path, O_WRONLY);
 
-		if (fd == -1) {
+		if (fd < 0) {
 			ef->readonly = 1;
-			capacity = 0;
 		}
 
 		else {
 			ef->readonly = readonly;
-
-			if (readonly) {
-				capacity = 0;
-			}
-
-			else {
-				capacity = HISTORY_CAPACITY;
-			}
+			close(fd);
 		}
-
-		stack_init(
-			&ef->undo,
-			capacity,
-			sizeof(Operation), 
-			vector_operation_destroy);
-
-		stack_init(
-			&ef->redo, 
-			capacity,
-			sizeof(Operation), 
-			vector_operation_destroy);
 	}
 
 	else {
 		ef->readonly = readonly;
-		size_t capacity = (ef->readonly)
-			? 0
-			: HISTORY_CAPACITY;
-
-		stack_init(
-			&ef->undo,
-			capacity,
-			sizeof(Operation), 
-			vector_operation_destroy);
-
-		stack_init(
-			&ef->redo, 
-			capacity,
-			sizeof(Operation), 
-			vector_operation_destroy);		
 	}
+
+
+	/// --- UNDO/REDO STACKS ---
+
+	size_t capacity = (ef->readonly)
+		? 0
+		: HISTORY_CAPACITY;
+
+	stack_init(
+		&ef->undo,
+		capacity,
+		sizeof(Operation), 
+		vector_operation_destroy);
+
+	stack_init(
+		&ef->redo, 
+		capacity,
+		sizeof(Operation), 
+		vector_operation_destroy);
+
 
 
 	/// --- OTHER INIT ---

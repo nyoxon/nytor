@@ -36,8 +36,7 @@ static int parse_args
 (
 	int argc, 
 	char* argv[],
-	int* debug_mode,
-	int* start_readonly
+	EditorOptions* eoptions
 );
 
 int main(int argc, char* argv[]) {
@@ -45,9 +44,12 @@ int main(int argc, char* argv[]) {
 
 
 	// --- PARSE CLI ARGUMENTS ---
-	int debug_mode = 0, start_readonly = 0;
+	EditorOptions eoptions = {
+		.debug_mode = 0,
+		.start_readonly = 0
+	};
 
-	int ret = parse_args(argc, argv, &debug_mode, &start_readonly);
+	int ret = parse_args(argc, argv, &eoptions);
 
 	if (ret == 1) { // program does not need to run
 		return 0;
@@ -61,18 +63,15 @@ int main(int argc, char* argv[]) {
 		filenames = argv + optind;
 	}
 
+	eoptions.filenames = filenames;
+	eoptions.filename_count = argc - optind;
+
 
 
 	// --- EDITOR INIT AND CONFIGURATIONS ---
 	Editor editor;
 
-	if (editor_init(
-		&editor, 
-		filenames,
-		argc - optind,
-		debug_mode,
-		start_readonly) < 0)
-	{
+	if (editor_init(&editor, &eoptions) < 0){
 		if (editor.result.type != ERROR_OK) {
 			fprintf(stderr, editor.result.reason);
 		}
@@ -282,8 +281,7 @@ static int parse_args
 (
 	int argc, 
 	char* argv[],
-	int* debug_mode,
-	int* start_readonly
+	EditorOptions* eoptions
 ) 
 {
 	int opt;
@@ -301,7 +299,7 @@ static int parse_args
 	{
 		switch (opt) {
 			case 'd':
-				*debug_mode = 1;
+				eoptions->debug_mode = 1;
 				return 0;
 
 			case 'h':
@@ -313,7 +311,7 @@ static int parse_args
 				return 1;
 
 			case 'r':
-				*start_readonly = 1;
+				eoptions->start_readonly = 1;
 				return 0;
 
 			default:

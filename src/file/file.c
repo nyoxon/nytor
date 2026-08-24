@@ -151,9 +151,10 @@ static uint32_t* read_file
 
 			else {
 				char reason[512];
+
 				sprintf(reason, 
-					"read_file (%s): access denied", 
-					 path);
+					"read_file: %s", 
+					 strerror(errno));
 
 				result_set_reason(result, reason);
 				result->type = ERROR_FILE_HANDLE;           
@@ -187,8 +188,13 @@ static uint32_t* read_file
 		close(fd);
 
 		if (result) {
-			result_set_reason(result,
-				"read_file: invalid fd");
+			char reason[512];
+
+			sprintf(reason, 
+				"read_file: %s", 
+				 strerror(errno));
+
+			result_set_reason(result, reason);
 			result->type = ERROR_MALLOC;
 		}
 
@@ -202,8 +208,13 @@ static uint32_t* read_file
 		free(bytes);
 
 		if (result) {
-			result_set_reason(result,
-				"read_file: read_bytes < 0");
+			char reason[512];
+
+			sprintf(reason, 
+				"read_file: %s", 
+				 strerror(errno));
+			
+			result_set_reason(result, reason);
 			result->type = ERROR_SYS_READ;
 		}
 
@@ -216,8 +227,13 @@ static uint32_t* read_file
 		free(bytes);
 
 		if (result) {
-			result_set_reason(result,
-				"read_file: data is invalid");
+			char reason[512];
+
+			sprintf(reason, 
+				"read_file: %s", 
+				 strerror(errno));
+			
+			result_set_reason(result, reason);
 			result->type = ERROR_MALLOC;
 		}
 
@@ -259,7 +275,7 @@ static uint32_t* read_file
 }
 
 // creates the lines based on the '\n' present in the file
-static int split_lines
+static void split_lines
 (
 	File* file, 
 	const uint32_t* data, 
@@ -310,8 +326,6 @@ static int split_lines
 	if (size > 0) {
 		file->has_dirty_line = 1;
 	}
-
-	return EIE_OK;
 }
 
 static void file_create_empty
@@ -354,7 +368,9 @@ int file_open
 	if (!path) {
 		file_create_empty(file, tab_size, use_spaces);
 
-		result_ok(result);
+		if (result) {
+			result_ok(result);
+		}
 
 		return EIE_OK;
 	}
@@ -367,13 +383,18 @@ int file_open
 		result);
 	
 	if (!data) {
-		if (result->type == ERROR_FILE_DOES_NOT_EXIST) {
+		if (result && result->type == ERROR_FILE_DOES_NOT_EXIST) {
 			int fd = open(path, O_CREAT | O_EXCL | O_RDWR, 0644);
 
 			if (fd < 0) {
-				perror("sys_open");
-				result_set_reason(result,
-					"file_open: invalid file");
+				char reason[512];
+
+				sprintf(reason, 
+					"file_open: %s", 
+					 strerror(errno));
+				
+				result_set_reason(result, reason);
+
 				result->type = ERROR_FILE_HANDLE;
 
 				return EIE_FATAL_ERROR;
@@ -388,7 +409,9 @@ int file_open
 			
 			file_set_name(file, path, 0);
 
-			result_ok(result);
+			if (result) {
+				result_ok(result);
+			}
 
 			return EIE_OK;          
 		}
@@ -413,18 +436,13 @@ int file_open
 	
 	file_set_name(file, path, 0);
 
-	if (split_lines(file, data, size) < 0) {
-		free(data);
-
-		result_set_reason(result,
-			"file_open: error returned by a static function");
-		result->type = ERROR_STATIC;
-
-		return EIE_FATAL_ERROR;
-	}
+	split_lines(file, data, size);
 
 	free(data);
-	result_ok(result);
+
+	if (result) {
+		result_ok(result);
+	}
 
 	return EIE_OK;
 }
@@ -593,7 +611,9 @@ void file_sync
 		split_lines(file, data, size);
 	}
 
-	result_ok(result);
+	if (result) {
+		result_ok(result);
+	}
 
 	free(data);
 }
@@ -610,19 +630,22 @@ int file_save(File* file, Result* result) {
 
 	if (fd < 0) {
 		if (result) {
-			if (errno == ENOENT) {
-				result_set_reason(result,
-					"file_save: file does not exist");
-				result->type = ERROR_FILE_DOES_NOT_EXIST;
+			char reason[512];
 
-			} else if (errno == EACCES) {
-				result_set_reason(result,
-					"file_save: access denied");
+			sprintf(reason, 
+				"file_save: %s", 
+				 strerror(errno));
+
+			if (errno == ENOENT) {
+				result->type = ERROR_FILE_DOES_NOT_EXIST;
+			} 
+
+			else if (errno == EACCES) {
 				result->type = ERROR_FILE_HANDLE;
 
-			} else if (errno == EPERM) {
-				result_set_reason(result,
-					"file_save: operation denied");
+			} 
+
+			else if (errno == EPERM) {
 				result->type = ERROR_FILE_HANDLE;
 			}
 		}
@@ -633,9 +656,13 @@ int file_save(File* file, Result* result) {
 	// write aaaa
 	if (file->lines.size == 0) {
 		write(fd, "", 1);
-		result_ok(result);
+
+		if (result) {
+			result_ok(result);
+		}
 
 		file->dirty = 0;
+		close(fd);
 
 		return EIE_OK;
 	}
@@ -664,7 +691,10 @@ int file_save(File* file, Result* result) {
 	file->dirty = 0;
 
 	close(fd);
-	result_ok(result);
+
+	if (result) {
+		result_ok(result);
+	}
 
 	return EIE_OK;
 }

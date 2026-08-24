@@ -7,7 +7,7 @@ CC      := gcc
 
 CFLAGS  := -O2 -Wall -Wextra -Wpedantic -g -MMD -MP
 CFLAGS += -DNYTOR_VERSION=\"$(VERSION)\" -std=c17 -D_GNU_SOURCE 
-CFLAGS_DEBUG := -fsanitize=address,undefined
+CFLAGS_DEBUG := -fsanitize=address,undefined -g
 CPPFLAGS := -Isrc -Iinclude
 
 LDFLAGS := -lm

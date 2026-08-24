@@ -150,8 +150,8 @@ static void render_utf
 	size_t screen_rows,
 	size_t screen_cols
 )
-{
-	size_t last_line;
+{	
+	size_t last_line = 0;
 
 	uint32_t u32buf[screen_cols];
 	size_t codepoints = 0;
@@ -393,7 +393,8 @@ static void render_utf
 	}
 
 	if (editor->config.has_background) {
-		size_t first_empty_row = (last_line > editor->view.row_offset)
+		size_t first_empty_row = 
+		(last_line > editor->view.row_offset)
 			? last_line - editor->view.row_offset
 			: last_line + 1;
 
