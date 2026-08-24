@@ -79,7 +79,8 @@ static const struct operator MAKE_OPERATORS[] = {
 	{"$?",				2},
 	{"$*",				2},
 	{"$",				1},
-	{"@",				1}
+	{"@",				1},
+	{"=",				1}
 };
 
 static const struct punctuation MAKE_PUNCTUATIONS[] = {
@@ -92,7 +93,10 @@ static const struct punctuation MAKE_PUNCTUATIONS[] = {
 	{';'},
 	{':'},
 	{'.'},
-	{','}
+	{','},
+	{'\''},
+	{'\\'},
+	{'"'}
 };
 
 #define MAKE_KEYWORDS_COUNT ARRAY_SIZE(MAKE_KEYWORDS)
@@ -300,7 +304,8 @@ static size_t make_tokenize_line
 		}
 
 		// string
-		if (line[i] == '"') {
+		if (line[i] == '"' &&
+			(i == 0 || (i > 0 && line[i - 1] != '\\'))) {
 			tokens[ntokens++] = (struct token) {
 				HL_PUNCTUATION,
 				i,
@@ -483,7 +488,9 @@ static size_t make_tokenize_line
 					j++;
 				}
 
-				if (first_token && j < len && line[j] == ':') {
+				if (first_token && j < len && 
+					(line[j] == ':' || line[j] == '=')) 
+				{
 					hl = HL_FUNCTION;
 				}
 			}

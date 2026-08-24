@@ -105,6 +105,7 @@ static const struct specific_keyword BASH_LIB[] = {
 	{"fold",				4},
 	{"od",					2},
 	{"xxd",					3},
+	{"cat",					3},
 
 	{"ls",					2},
 	{"cp",					2},
@@ -365,6 +366,8 @@ static const struct punctuation BASH_PUNCTUATIONS[] = {
 	{'$'}, // $ is an operator, but i don't like seeing it in the same
 		   // color as operators
 	{'-'},
+	{'\''},
+	{'"'},
 	{'\\'}	
 };
 
@@ -850,7 +853,9 @@ static size_t bash_tokenize_line
 		}
 
 		// string
-		if (line[i] == '"') {
+		if (line[i] == '"' && 
+			(i == 0 || (i > 0 && line[i - 1] != '\\')))
+		{
 			tokens[ntokens++] = (struct token) {
 				HL_PUNCTUATION,
 				i,
@@ -877,7 +882,9 @@ static size_t bash_tokenize_line
 		}
 
 		// char
-		if (line[i] == '\'') {
+		if (line[i] == '\'' && 
+			(i == 0 || (i > 0 && line[i - 1] != '\\'))) 
+		{
 			tokens[ntokens++] = (struct token) {
 				HL_PUNCTUATION,
 				i,
@@ -922,6 +929,7 @@ static size_t bash_tokenize_line
 
 		// identifier
 		if (isalpha((unsigned char) line[i]) || line[i] == '_') {
+			enum highlight hl;
 
 			size_t begin = i;
 			int is_param = (begin > 0 && line[begin - 1] == '-');
@@ -931,35 +939,52 @@ static size_t bash_tokenize_line
 				i++;
 			}
 
-			enum highlight hl;
+			if (is_param) {
+				hl = HL_NORMAL;
+
+				goto create_token;
+			}
+
+			int is_definition =
+				(i < len && line[i] == '=');
+
+			if (is_definition) {
+				hl = HL_FUNCTION;
+
+				goto create_token;
+			}
 
 			int index = -1;
 
-			if (!is_param &&
-				first_tokens &&
+			if (first_tokens &&
 				is_keyword(line + begin, i - begin, &index)) 
 			{
 				hl = BASH_KEYWORDS[index].hl;
 			}
 
-			else if (!is_param &&
-					is_lib(line + begin, i - begin)) 
+			else if (is_lib(line + begin, i - begin)) 
 			{
 				hl = HL_LIB_FUNCTION;
 				first_tokens = 0;
 			}
 
-			else if (!is_param &&
-					is_builtin(line + begin, i - begin)) 
+			else if (is_builtin(line + begin, i - begin)) 
 			{
 				hl = HL_POSIX;
 				first_tokens = 0;
 			}
 
 			else {
-				hl = HL_NORMAL;
+				if (is_definition) {
+					hl = HL_FUNCTION;
+				}
+
+				else {
+					hl = HL_NORMAL;
+				}
 			}
 
+		create_token:
 			tokens[ntokens++] = (struct token) {
 				hl,
 				begin,

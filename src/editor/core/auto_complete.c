@@ -204,7 +204,7 @@ static void autocomp_prompt
 		suffix_size
 	);
 
-	uint32_t additional_char[] = {U' '};
+	uint32_t additional_char = U' ';
 
 	if (type == AUTOCOMP_FILE) {
 		char* name = u32_to_utf8(
@@ -213,7 +213,7 @@ static void autocomp_prompt
 		);
 
 		if (isdir(name)) {
-			additional_char[0] = U'/';
+			additional_char = U'/';
 		}
 
 		free(name);
@@ -221,14 +221,21 @@ static void autocomp_prompt
 
 	x += suffix_size;
 
+	if (additional_char == U'/' ||
+		x == u32string_size(text) ||
+		(x + 1 < u32string_size(text) && 
+		(u32string_char(text, x + 1) == U' ' || 
+			u32string_char(text, x + 1) == U'\t')))
+	{
 		u32string_insert_range_raw(
 			text,
 			x,
-			additional_char,
+			&additional_char,
 			1
 		);
-	
+
 		x++;
+	}
 
 	editor->status_bar.cursor.pos.x = x;
 	prompt_cursor_update(&editor->status_bar);
@@ -441,61 +448,68 @@ static void autocomp_word
 	// necessarily greater than 0, otherwise
 	// this function would not have been called	
 	size_t x = editor->cursor.pos.x;
+	size_t added = 0;
 
-	Position cursor_remove = (Position) { x, editor->cursor.pos.y };
+	if (suffix_size > 0) {
+		u32string_insert_range_raw(
+			text,
+			x,
+			suffix,
+			suffix_size
+		);
 
-	u32string_insert_range_raw(
-		text,
-		x,
-		suffix,
-		suffix_size
-	);
+		x += suffix_size;
+		added += suffix_size;
+	}
 
-	x += suffix_size;
+	if (x == u32string_size(text) ||
+		(x < u32string_size(text) && 
+		(u32string_char(text, x) == U' ' || 
+			u32string_char(text, x) == U'\t')))
+	{
+		u32string_insert_range_raw(
+			text,
+			x,
+			U" ",
+			1
+		);
 
-	// if (editor->config.use_autocomplete) {
-	// 	editor_update_word_frequency(
-	// 		editor,
-	// 		u32string_into_ptr_const(text) + x - word_size,
-	// 		word_size,
-	// 		1
-	// 	);
-	// }
+		x++;
+		added += 1;
+	}
 
-	u32string_insert_range_raw(
-		text,
-		x,
-		U" ",
-		1
-	);
-
-	x++;
-	Position cursor_insert = (Position) { x, editor->cursor.pos.y };
+	Position cursor_remove = (Position) { editor->cursor.pos.x, 
+		editor->cursor.pos.y };
 
 	editor->cursor.pos.x = x;
 	editor_cursor_update(editor);
+	
+	if (added > 0) {
+		Position cursor_insert = (Position) { x, editor->cursor.pos.y };
 
-	Position start = cursor_remove;
-	Position end = cursor_insert;
 
-	u32string op_text = u32string_slice(
-		text,
-		start.x,
-		end.x
-	);
+		Position start = cursor_remove;
+		Position end = cursor_insert;
 
-	Operation op = operation_create_insert(
-		start, end,
-		cursor_remove, cursor_insert,
-		op_text
-	);
+		u32string op_text = u32string_slice(
+			text,
+			start.x,
+			end.x
+		);
 
-	stack_clear(&editor->actual_file->redo);
-	stack_push(&editor->actual_file->undo, &op);
+		Operation op = operation_create_insert(
+			start, end,
+			cursor_remove, cursor_insert,
+			op_text
+		);
 
-	file_set_line_dirty(&editor->actual_file->file, editor->cursor.pos.y);
-	file_set_has_dirty_line(&editor->actual_file->file);
-	editor->actual_file->file.dirty = 1;
+		stack_clear(&editor->actual_file->redo);
+		stack_push(&editor->actual_file->undo, &op);
+
+		file_set_line_dirty(&editor->actual_file->file, editor->cursor.pos.y);
+		file_set_has_dirty_line(&editor->actual_file->file);
+		editor->actual_file->file.dirty = 1;
+	}
 }
 
 static WindowResult on_select_autocomp(void* userdata) {
@@ -628,27 +642,24 @@ static HashTable find_prefixed_words
 			//           x
 			size_t x = index + prefix_size;
 
+			// found: abctre
+			//           i x
+			if (index > 0 && is_word(u32string_char(text, index - 1))) {
+				pos = x;
+				continue;
+			}
+
 			while (x < size && is_word(u32string_char(text, x))) {
 				x++;
 			}
 
-			// found: abctre
-			//           i x
-			if (index > 0 && is_word(u32string_char(text, index - 1))) {
-				pos = index + x;
-				continue;
-			}
-
-			// found the prefix
+			// found the prefix itself
 			if (i == cursor_pos.y && 
-				(size_t) index + prefix_size == cursor_pos.x) 
+				cursor_pos.x >= (size_t) index && cursor_pos.x <= x) 
 			{
-				pos = index + x;
+				pos = x;
 				continue;
 			}
-
-			// found: treant
-			//             x
 
 			u32string word = u32string_slice(text, index, x);
 
@@ -662,7 +673,7 @@ static HashTable find_prefixed_words
 				u32string_free(&word);
 			}
 
-			pos = index + x;
+			pos = x;
 		}
 	}
 
