@@ -110,6 +110,28 @@ On Debian-based systems:
 sudo apt install gcc make
 ```
 
+In order to use your system's clipboard, you'll need:
+
+#### Wayland:
+
+```bash
+sudo apt install wl-clipboard
+```
+
+#### X11:
+
+```bash
+sudo apt install xclip
+```
+
+or
+
+```bash
+sudo apt install xsel
+```
+
+None of this is really necessary, as the editor has an internal clipboard, but it's required if you want to copy text from within the editor directly to your system clipboard and vice versa.
+
 ### Building
 
 Clone the repository and build:
