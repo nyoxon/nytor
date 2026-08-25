@@ -155,7 +155,9 @@ int load_lang_plugins(Vector* out, Vector* plugin_names) {
 			break;
 		}
 
-		struct lexer* lexer = lang_plugin->create_lexer();
+		struct lexer* lexer = (lang_plugin->create_lexer)
+			? lang_plugin->create_lexer()
+			: NULL;
 
 		LangPluginData data = { handle, lexer, lang_plugin, };
 

@@ -99,6 +99,7 @@ In addition to those presented above, the editor has several other features, suc
 - Hexadecimal mode
 - `comment` cmd start operating on block comments as well
 - The `find` functions accept regular expressions
+- goto-definition operations etc (see [gotod](scripts/gotod.sh))
 
 ## Installation
 

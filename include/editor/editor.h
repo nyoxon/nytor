@@ -74,11 +74,7 @@ typedef struct {
 
 
 // create a Editor
-int editor_init
-(
-	Editor* editor,
-	const EditorOptions* eoptions
-);
+int editor_init(Editor* editor,const EditorOptions* eoptions);
 
 void editor_free(Editor* editor);
 
