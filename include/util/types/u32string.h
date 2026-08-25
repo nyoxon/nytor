@@ -179,6 +179,8 @@ size_t utf8_to_u32
 );
 
 int u32_isspace(uint32_t c);
+int u32_isalpha(uint32_t c);
+int u32_isalnum(uint32_t c);
 
 void u32_print_cp(uint32_t cp);
 void u32_print(const uint32_t* string, size_t size);

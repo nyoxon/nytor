@@ -6,12 +6,34 @@
 
 #include "bash_lexer.h"
 
-#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
+int u32_isspace(uint32_t cp) {
+	if (cp > UINT8_MAX) {
+		return 0;
+	}
+
+	return isspace((unsigned char) cp) != 0;
+}
+
+int u32_isalpha(uint32_t cp) {
+	if (cp > UINT8_MAX) {
+		return 0;
+	}
+
+	return isalpha((unsigned char) cp) != 0;
+}
+
+int u32_isalnum(uint32_t cp) {
+	if (cp > UINT8_MAX) {
+		return 0;
+	}
+
+	return isalnum((unsigned char) cp) != 0;
+}
+
+
 
 int is_bash_word_char(uint32_t c) {
-	unsigned char k = (unsigned char) c;
-
-	return (isalnum(k) || k == '_');
+	return (u32_isalnum(c) || c == U'_');
 }
 
 struct keyword {
@@ -42,8 +64,8 @@ static const char* extensions[] = {
 };
 
 static const struct pair BASH_PAIRS[] = {
-	{'{', '}', 0, 1},
-	{'(', ')', 0, 1},
+	{'{', '}', 1, 1},
+	{'(', ')', 1, 1},
 	{'[', ']', 0, 1},
 	{'"', '"', 0, 1},
 	{'\'', '\'', 0, 1}
@@ -69,7 +91,11 @@ static const struct keyword BASH_KEYWORDS[] = {
 	{"select",			6, HL_KEYWORD},
 	{"coproc",			6, HL_KEYWORD},
 	{"shopt",			5, HL_KEYWORD},
-
+	{"break",			5, HL_KEYWORD},
+	{"continue",		8, HL_KEYWORD},
+	{"return",			6, HL_KEYWORD},
+	
+	{"local",			5, HL_SPECIFIER},
 
 	{"true",			4, HL_TYPE},
 	{"false",			5, HL_TYPE},
@@ -106,6 +132,7 @@ static const struct specific_keyword BASH_LIB[] = {
 	{"od",					2},
 	{"xxd",					3},
 	{"cat",					3},
+	{"set",					3},
 
 	{"ls",					2},
 	{"cp",					2},
@@ -161,6 +188,7 @@ static const struct specific_keyword BASH_LIB[] = {
 	{"printenv",			8},
 	{"time",				4},
 	{"watch",				5},
+	{"shift",				5},
 
 	{"curl",				4},
 	{"wget",				4},
@@ -559,15 +587,7 @@ static int is_number_start
 	if (isdigit((unsigned char) line[i])) {
 		return 1;
 	}
-
-	// .5
-	if (line[i] == '.' &&
-		(i + 1 < len) &&
-		isdigit((unsigned char) line[i + 1]))
-	{
-		return 1;
-	}
-
+	
 	return 0;
 }
 
@@ -586,18 +606,6 @@ static void consume_number
 		isdigit((unsigned char) line[pos]))
 	{
 		pos++;
-	}
-
-
-	// decimal part
-	if (pos < len && line[pos] == '.') {
-		pos++;
-
-		while (pos < len &&
-			isdigit((unsigned char) line[pos]))
-		{
-			pos++;
-		}
 	}
 
 	*i = pos;
@@ -789,7 +797,7 @@ static size_t bash_tokenize_line
 	int state_has_changed = 0;
 
 	while (i < len && ntokens < max_tokens) {
-		while (i < len && isspace((unsigned char) line[i])) {
+		while (i < len && u32_isspace(line[i])) {
 			i++;
 		}
 
@@ -838,8 +846,8 @@ static size_t bash_tokenize_line
 		}
 
 		//   comment //
-		if (line[i] == '#' &&
-			(i == 0 || (i > 0 && isspace(line[i - 1]))))
+		if (line[i] == U'#' &&
+			(i == 0 || (i > 0 && u32_isspace(line[i - 1]))))
 		{
 			tokens[ntokens++] = (struct token) {
 				HL_COMMENT,
@@ -853,8 +861,8 @@ static size_t bash_tokenize_line
 		}
 
 		// string
-		if (line[i] == '"' && 
-			(i == 0 || (i > 0 && line[i - 1] != '\\')))
+		if (line[i] == U'"' && 
+			(i == 0 || (i > 0 && line[i - 1] != U'\\')))
 		{
 			tokens[ntokens++] = (struct token) {
 				HL_PUNCTUATION,
@@ -882,8 +890,8 @@ static size_t bash_tokenize_line
 		}
 
 		// char
-		if (line[i] == '\'' && 
-			(i == 0 || (i > 0 && line[i - 1] != '\\'))) 
+		if (line[i] == U'\'' && 
+			(i == 0 || (i > 0 && line[i - 1] != U'\\'))) 
 		{
 			tokens[ntokens++] = (struct token) {
 				HL_PUNCTUATION,
@@ -928,11 +936,11 @@ static size_t bash_tokenize_line
 		}
 
 		// identifier
-		if (isalpha((unsigned char) line[i]) || line[i] == '_') {
+		if (u32_isalpha(line[i]) || line[i] == U'_') {
 			enum highlight hl;
 
 			size_t begin = i;
-			int is_param = (begin > 0 && line[begin - 1] == '-');
+			int is_param = (begin > 0 && line[begin - 1] == U'-');
 
 			while (i < len && is_bash_word_char(line[i]))
 			{
@@ -946,7 +954,7 @@ static size_t bash_tokenize_line
 			}
 
 			int is_definition =
-				(i < len && line[i] == '=');
+				(i < len && line[i] == U'=');
 
 			if (is_definition) {
 				hl = HL_FUNCTION;
@@ -975,12 +983,16 @@ static size_t bash_tokenize_line
 			}
 
 			else {
-				if (is_definition) {
-					hl = HL_FUNCTION;
+				hl = HL_NORMAL;
+
+				size_t j = i;
+
+				while (j < len && u32_isspace(line[j])) {
+					j++;
 				}
 
-				else {
-					hl = HL_NORMAL;
+				if (j < len && line[j] == U'(') {
+					hl = HL_FUNCTION;
 				}
 			}
 
@@ -1048,7 +1060,7 @@ static size_t bash_tokenize_line
 
 			first_tokens = 0;
 
-			if (line[i] == '$') {
+			if (line[i] == U'$') {
 				i++;
 				size_t begin = i;
 
@@ -1072,28 +1084,28 @@ static size_t bash_tokenize_line
 				continue;
 			}
 
-			if (bash->state == BASH_LEX_NORMAL && line[i] == '[') {
+			if (bash->state == BASH_LEX_NORMAL && line[i] == U'[') {
 				bash->state = BASH_LEX_COMPOUND;
 			}
 
-			else if (bash->state == BASH_LEX_COMPOUND && line[i] == ']') {
+			else if (bash->state == BASH_LEX_COMPOUND && line[i] == U']') {
 				bash->state = BASH_LEX_NORMAL;
 			}
 
 			else if (bash->state == BASH_LEX_NORMAL &&
-				i + 1 < len && line[i] == '(' && line[i + 1] == '(')
+				i + 1 < len && line[i] == U'(' && line[i + 1] == U'(')
 			{
 				bash->state = BASH_LEX_ARITHMETIC;
 			}
 
 			else if (bash->state == BASH_LEX_ARITHMETIC &&
-				i > 0 && line[i] == ')' && line[i - 1] == ')')
+				i > 0 && line[i] == U')' && line[i - 1] == U')')
 			{
 				bash->state = BASH_LEX_NORMAL;
 			}
 
 			else if (bash->state == BASH_LEX_NORMAL &&
-				line[i] == ';')
+				line[i] == U';')
 			{
 				first_tokens = 1;
 			}

@@ -6,16 +6,38 @@
 
 #include "c_lexer.h"
 
-#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
+int u32_isspace(uint32_t cp) {
+	if (cp > UINT8_MAX) {
+		return 0;
+	}
+
+	return isspace((unsigned char) cp) != 0;
+}
+
+int u32_isalpha(uint32_t cp) {
+	if (cp > UINT8_MAX) {
+		return 0;
+	}
+
+	return isalpha((unsigned char) cp) != 0;
+}
+
+int u32_isalnum(uint32_t cp) {
+	if (cp > UINT8_MAX) {
+		return 0;
+	}
+
+	return isalnum((unsigned char) cp) != 0;
+}
+
+
 
 static int posix = 1;
 
 /// --- TYPE DEFINITIONS ---
 
 int is_c_word_char(uint32_t c) {
-	unsigned char k = (unsigned char) c;
-
-	return (isalnum(k) || k == '_');
+	return (u32_isalnum(c) || c == U'_');
 }
 
 
@@ -1484,7 +1506,7 @@ static size_t c_tokenize_line
 	int state_has_changed = 0;
 
 	while (i < len && ntokens < max_tokens) {
-		while (i < len && isspace((unsigned char) line[i])) {
+		while (i < len && u32_isspace(line[i])) {
 			i++;
 		}
 
@@ -1498,7 +1520,7 @@ static size_t c_tokenize_line
 			size_t begin = i;
 
 			while (i + 1 < len && 
-				!(line[i] == '*' && line[i + 1] == '/'))
+				!(line[i] == U'*' && line[i + 1] == U'/'))
 			{
 				i++;
 			}
@@ -1534,7 +1556,7 @@ static size_t c_tokenize_line
 			continue;
 		}
 
-		if (c->state == C_LEX_PREPROCESSOR && line[i] == '<') {
+		if (c->state == C_LEX_PREPROCESSOR && line[i] == U'<') {
 			tokens[ntokens++] = (struct token) {
 				HL_PUNCTUATION,
 				i,
@@ -1545,7 +1567,7 @@ static size_t c_tokenize_line
 			size_t begin = i;
 
 			while (i < len) {
-				if (line[i] == '>') {
+				if (line[i] == U'>') {
 					break;
 				}
 
@@ -1560,7 +1582,7 @@ static size_t c_tokenize_line
 				};				
 			}
 
-			if (i < len && line[i] == '>') {
+			if (i < len && line[i] == U'>') {
 				tokens[ntokens++] = (struct token) {
 					HL_PUNCTUATION,
 					i,
@@ -1616,8 +1638,8 @@ static size_t c_tokenize_line
 
 		//   comment //
 		if (i + 1 < len &&
-			line[i] == '/' &&
-			line[i + 1] == '/')
+			line[i] == U'/' &&
+			line[i + 1] == U'/')
 		{
 			tokens[ntokens++] = (struct token) {
 				HL_COMMENT,
@@ -1632,15 +1654,15 @@ static size_t c_tokenize_line
 		// 	comment /*
 		if (c->state == C_LEX_NORMAL &&
 			i + 1 < len &&
-			line[i] == '/' &&
-			line[i + 1] == '*')
+			line[i] == U'/' &&
+			line[i + 1] == U'*')
 		{
 			size_t begin = i;
 
 			i += 2;
 
 			while (i + 1 < len &&
-				!(line[i] == '*' && line[i + 1] == '/'))
+				!(line[i] == U'*' && line[i + 1] == U'/'))
 			{
 				i++;
 			}
@@ -1679,21 +1701,17 @@ static size_t c_tokenize_line
 
 
 		// preprocess
-		if (first_token && i < len && line[i] == '#') {
+		if (first_token && i < len && line[i] == U'#') {
 			size_t begin_line = i;
 			i++;
 			
-			while (i < len && 
-				(isspace((unsigned char) line[i])))
-			{
+			while (i < len && u32_isspace(line[i])) {
 				i++;
 			}
 			
 			size_t begin_word = i;
 
-			while (i < len &&
-				(isalnum((unsigned char) line[i]) ||
-				line[i] == '_')) // TODO
+			while (i < len && is_c_word_char(line[i]))
 			{
 				i++;
 			}
@@ -1749,7 +1767,7 @@ static size_t c_tokenize_line
 
 
 		// string
-		if (line[i] == '"') {
+		if (line[i] == U'"') {
 			tokens[ntokens++] = (struct token) {
 				HL_PUNCTUATION,
 				i,
@@ -1776,7 +1794,7 @@ static size_t c_tokenize_line
 		}
 
 		// char
-		if (line[i] == '\'') {
+		if (line[i] == U'\'') {
 			tokens[ntokens++] = (struct token) {
 				HL_PUNCTUATION,
 				i,
@@ -1820,14 +1838,15 @@ static size_t c_tokenize_line
 		}
 
 		// identifier
-		if (isalpha((unsigned char) line[i]) || line[i] == '_') {
+		if (u32_isalpha(line[i]) || line[i] == U'_') {
 			// isalpha is used because a variable/function name in C
 			// cannot start with a number
 
 			size_t begin = i;
 			int is_meth_or_att = 
-				(begin > 0 && line[begin - 1] == '.') ||
-				(begin > 1 && line[begin - 1] == '>' && line[begin - 2] == '-');
+				(begin > 0 && line[begin - 1] == U'.') ||
+				(begin > 1 && line[begin - 1] == U'>' && 
+					line[begin - 2] == U'-');
 
 			// but might contain numbers
 			while (i < len && is_c_word_char(line[i]))
@@ -1852,15 +1871,15 @@ static size_t c_tokenize_line
 				size_t j = i;
 
 				// function
-				while (j < len && isspace((unsigned char) line[j])) {
+				while (j < len && u32_isspace(line[j])) {
 					j++;
 				}
 
-				if (j < len && line[j] == '(') {
+				if (j < len && line[j] == U'(') {
 					hl = HL_FUNCTION;
 				}
 
-				if (first_token && j < len && line[j] == ':') {
+				if (first_token && j < len && line[j] == U':') {
 					hl = HL_FUNCTION;
 				}
 			}

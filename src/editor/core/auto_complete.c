@@ -139,6 +139,10 @@ static void get_file_candidates
 
 			u32string_appendu8(&name, entry->d_name);
 
+			if (entry->d_type == DT_DIR) {
+				u32string_push(&name, U'/');
+			}
+
 			vector_push(candidates, &name);
 		}
 	}
@@ -182,6 +186,12 @@ static Vector get_autocomp_candidates
 
 /// --- AUTOCOMP_PROMPT ---
 
+static int should_add_space(const u32string* text, size_t x) {
+	return (x == u32string_size(text) ||
+		(x + 1 < u32string_size(text) && 
+			u32_isspace(u32string_char(text, x + 1))));
+}
+
 static void autocomp_prompt
 (
 	Editor* editor,
@@ -204,7 +214,7 @@ static void autocomp_prompt
 		suffix_size
 	);
 
-	uint32_t additional_char = U' ';
+	int additional = 1;
 
 	if (type == AUTOCOMP_FILE) {
 		char* name = u32_to_utf8(
@@ -213,7 +223,7 @@ static void autocomp_prompt
 		);
 
 		if (isdir(name)) {
-			additional_char = U'/';
+			additional = 0;
 		}
 
 		free(name);
@@ -221,16 +231,11 @@ static void autocomp_prompt
 
 	x += suffix_size;
 
-	if (additional_char == U'/' ||
-		x == u32string_size(text) ||
-		(x + 1 < u32string_size(text) && 
-		(u32string_char(text, x + 1) == U' ' || 
-			u32string_char(text, x + 1) == U'\t')))
-	{
+	if (additional && should_add_space(text, x)) {
 		u32string_insert_range_raw(
 			text,
 			x,
-			&additional_char,
+			U" ",
 			1
 		);
 
@@ -247,27 +252,18 @@ static WindowResult on_select_autocomp_prompt(void* userdata) {
 	Editor* editor = userdata;
 	Vector* candidates = &editor->window.content;
 	u32string* buf = &editor->status_bar.buf;
+	size_t size = u32string_size(buf);
 
 	size_t x = editor->status_bar.cursor.pos.x;
 
-	if (x == u32string_size(buf)) {
+	if (x == size) {
 		x--;
 	}
 
-	if (x > 0) {
+	// necessarily in a valid position, otherwise
+	// this function would not have been called
+	while (x > 0 && is_utf_word_char(u32string_char(buf, x - 1))) {
 		x--;
-	}
-
-	while (is_utf_word_char(u32string_char(buf, x))) {
-		if (x == 0) {
-			break;
-		}
-
-		x--;
-	}
-
-	if (x > 0) {
-		x++;
 	}
 
 	const u32string* selected = vector_get_const(
@@ -278,7 +274,7 @@ static WindowResult on_select_autocomp_prompt(void* userdata) {
 	size_t prefix_size = editor->status_bar.cursor.pos.x - x;
 	size_t suffix_size = u32string_size(selected) - prefix_size;
 
-	AutoCompType type = (u32string_size(buf) == prefix_size)
+	AutoCompType type = (size == prefix_size)
 		? AUTOCOMP_CMD
 		: AUTOCOMP_FILE;
 
@@ -301,31 +297,35 @@ int editor_autocomp_prompt(Editor* editor) {
 	}
 
 	const u32string* buf = &editor->status_bar.buf;
+	size_t size = u32string_size(buf);
 
-	if (x == u32string_size(buf)) {
+	// asd|
+	if (x == size) {
 		x--;
 	}
-
+	
+	// if the cursor is not over a word_char, is it
+	// immediately after a word_char?
 	if (!is_utf_word_char(u32string_char(buf, x))) {
-		return -1;
-	}
 
-	while (is_utf_word_char(u32string_char(buf, x))) {
-		if (x == 0) {
-			break;
+		// no
+		if (x == 0 || !is_utf_word_char(u32string_char(buf, x - 1))) {
+			return -1;
 		}
 
+		// yes
 		x--;
 	}
 
-	if (x > 0) {
-		x++;
+	while (x > 0 && is_utf_word_char(u32string_char(buf, x - 1))) {
+		x--;
 	}
+
 
 	const uint32_t* prefix = u32string_into_ptr_const(buf) + x;
 	size_t prefix_size = editor->status_bar.cursor.pos.x - x;
 
-	int search_cmd = (u32string_size(buf) == prefix_size);
+	int search_cmd = (size == prefix_size);
 
 	Vector candidates;
 
@@ -462,11 +462,7 @@ static void autocomp_word
 		added += suffix_size;
 	}
 
-	if (x == u32string_size(text) ||
-		(x < u32string_size(text) && 
-		(u32string_char(text, x) == U' ' || 
-			u32string_char(text, x) == U'\t')))
-	{
+	if (should_add_space(text, x)) {
 		u32string_insert_range_raw(
 			text,
 			x,

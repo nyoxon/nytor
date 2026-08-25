@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <ctype.h>
 
 #define STACK_BUF_SIZE 4096
 
@@ -702,10 +703,28 @@ long u32string_stol(const u32string* string) {
 	return value;	
 }
 
-int u32_isspace(uint32_t c) {
-	return c == U' '  ||
-		   c == U'\t' ||
-		   c == U'\n';
+int u32_isspace(uint32_t cp) {
+	if (cp > UINT8_MAX) {
+		return 0;
+	}
+
+	return isspace((unsigned char) cp) != 0;
+}
+
+int u32_isalpha(uint32_t cp) {
+	if (cp > UINT8_MAX) {
+		return 0;
+	}
+
+	return isalpha((unsigned char) cp) != 0;
+}
+
+int u32_isalnum(uint32_t cp) {
+	if (cp > UINT8_MAX) {
+		return 0;
+	}
+
+	return isalnum((unsigned char) cp) != 0;
 }
 
 

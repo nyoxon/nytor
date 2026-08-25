@@ -175,7 +175,5 @@ void destroy_lang_plugins(Vector* lang_plugins) {
 }
 
 int is_utf_word_char(uint32_t c) {
-	return ('a' <= c && c <= 'z') ||
-			('A' <= c && c <= 'A') ||
-			('0' <= c && c <= '9');
+	return (u32_is_printable(c) && !u32_isspace(c));
 }

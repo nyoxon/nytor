@@ -157,6 +157,14 @@ typedef struct {
 int load_lang_plugins(Vector* out, Vector* plugin_names);
 void destroy_lang_plugins(Vector* lang_plugins);
 
+
+
 extern int is_utf_word_char(uint32_t c);
+
+
+
+// functions and macros that can help
+
+#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
 #endif

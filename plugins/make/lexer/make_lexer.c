@@ -5,12 +5,34 @@
 
 #include "make_lexer.h"
 
-#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
+int u32_isspace(uint32_t cp) {
+	if (cp > UINT8_MAX) {
+		return 0;
+	}
+
+	return isspace((unsigned char) cp) != 0;
+}
+
+int u32_isalpha(uint32_t cp) {
+	if (cp > UINT8_MAX) {
+		return 0;
+	}
+
+	return isalpha((unsigned char) cp) != 0;
+}
+
+int u32_isalnum(uint32_t cp) {
+	if (cp > UINT8_MAX) {
+		return 0;
+	}
+
+	return isalnum((unsigned char) cp) != 0;
+}
+
+
 
 int is_make_word_char(uint32_t c) {
-	unsigned char k = (unsigned char) c;
-
-	return (isalnum(k) || k == '_');
+	return (u32_isalnum(c) || c == U'_');
 }
 
 struct keyword {
@@ -192,14 +214,6 @@ static int is_number_start
 		return 1;
 	}
 
-	// .5
-	if (line[i] == '.' &&
-		(i + 1 < len) &&
-		isdigit((unsigned char) line[i + 1]))
-	{
-		return 1;
-	}
-
 	return 0;
 }
 
@@ -218,18 +232,6 @@ static void consume_number
 		isdigit((unsigned char) line[pos]))
 	{
 		pos++;
-	}
-
-
-	// decimal part
-	if (pos < len && line[pos] == '.') {
-		pos++;
-
-		while (pos < len &&
-			isdigit((unsigned char) line[pos]))
-		{
-			pos++;
-		}
 	}
 
 	*i = pos;
@@ -283,7 +285,7 @@ static size_t make_tokenize_line
 	int first_token = 1;
 
 	while (i < len && ntokens < max_tokens) {
-		while (i < len && isspace((unsigned char) line[i])) {
+		while (i < len && u32_isspace(line[i])) {
 			i++;
 		}
 
@@ -292,7 +294,7 @@ static size_t make_tokenize_line
 		}
 
 		//   comment //
-		if (line[i] == '#')
+		if (line[i] == U'#')
 		{
 			tokens[ntokens++] = (struct token) {
 				HL_COMMENT,
@@ -304,8 +306,8 @@ static size_t make_tokenize_line
 		}
 
 		// string
-		if (line[i] == '"' &&
-			(i == 0 || (i > 0 && line[i - 1] != '\\'))) {
+		if (line[i] == U'"' &&
+			(i == 0 || (i > 0 && line[i - 1] != U'\\'))) {
 			tokens[ntokens++] = (struct token) {
 				HL_PUNCTUATION,
 				i,
@@ -316,7 +318,7 @@ static size_t make_tokenize_line
 			size_t begin = i;
 
 			while (i < len) {
-				if (line[i] == '\\') {
+				if (line[i] == U'\\') {
 					size_t n = make_escape_length(
 						line + i,
 						len - i
@@ -347,7 +349,7 @@ static size_t make_tokenize_line
 					continue;
 				}
 
-				if (line[i] == '"') {
+				if (line[i] == U'"') {
 					break;
 				}
 
@@ -362,7 +364,7 @@ static size_t make_tokenize_line
 				};				
 			}
 
-			if (i < len && line[i] == '"') {
+			if (i < len && line[i] == U'"') {
 				tokens[ntokens++] = (struct token) {
 					HL_PUNCTUATION,
 					i,
@@ -376,7 +378,7 @@ static size_t make_tokenize_line
 		}
 
 		// char
-		if (line[i] == '\'') {
+		if (line[i] == U'\'') {
 			tokens[ntokens++] = (struct token) {
 				HL_PUNCTUATION,
 				i,
@@ -387,7 +389,7 @@ static size_t make_tokenize_line
 			size_t begin = i;
 
 			while (i < len) {
-				if (line[i] == '\\') {
+				if (line[i] == U'\\') {
 					size_t n = make_escape_length(
 						line + i,
 						len - i
@@ -418,7 +420,7 @@ static size_t make_tokenize_line
 					continue;
 				}
 
-				if (line[i] == '\'') {
+				if (line[i] == U'\'') {
 					break;
 				}
 
@@ -433,7 +435,7 @@ static size_t make_tokenize_line
 				};				
 			}
 
-			if (i < len && line[i] == '\'') {
+			if (i < len && line[i] == U'\'') {
 				tokens[ntokens++] = (struct token) {
 					HL_PUNCTUATION,
 					i,
@@ -462,7 +464,7 @@ static size_t make_tokenize_line
 		}
 
 		// identifier
-		if (isalpha((unsigned char) line[i]) || line[i] == '_') {
+		if (u32_isalpha(line[i]) || line[i] == U'_') {
 
 			size_t begin = i;
 
@@ -484,12 +486,12 @@ static size_t make_tokenize_line
 				size_t j = i;
 
 				// function/label
-				while (j < len && isspace((unsigned char) line[j])) {
+				while (j < len && u32_isspace(line[j])) {
 					j++;
 				}
 
 				if (first_token && j < len && 
-					(line[j] == ':' || line[j] == '=')) 
+					(line[j] == U':' || line[j] == U'=')) 
 				{
 					hl = HL_FUNCTION;
 				}

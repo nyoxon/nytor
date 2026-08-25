@@ -2586,12 +2586,14 @@ static int insert_delimiter_pair
 }
 
 // helper for has_open_delimiter_in_line
-static int is_open_delimiter_with_auto_indent(Editor* editor, int c) {
+static int is_open_delimiter_with_auto_indent(Editor* editor, uint32_t c) {
 	const struct language_rules* rules = 
 		editor->actual_file->language->rules;
 
 	for (size_t i = 0; i < rules->pair_count; i++) {
-		if (c == rules->pairs[i].open && rules->pairs[i].auto_indent) {
+		if (c == (unsigned char) rules->pairs[i].open && 
+			rules->pairs[i].auto_indent) 
+		{
 			return 1;
 		}
 	}
@@ -2613,13 +2615,17 @@ static int has_open_delimiter_in_line
 	}
 
 	for (size_t i = 1; i <= x; i++) {
-		char c = u32string_char(line, x - i);
+		uint32_t c = u32string_char(line, x - i);
 
 		if (is_open_delimiter_with_auto_indent(editor, c)) {
 			return 1;
-		} else if (isspace((unsigned) c)) {
+		} 
+
+		else if (u32_isspace(c)) {
 			continue;
-		} else {
+		} 
+
+		else {
 			return 0;
 		}
 	}
@@ -2710,8 +2716,8 @@ static void insert_newline_and_indent
 static int is_between_delimiter_with_auto_indent
 (
 	Editor* editor,
-	char prev,
-	char current
+	uint32_t prev,
+	uint32_t current
 ) 
 {
 	const struct language_rules* rules = (editor->actual_file->language) ?
@@ -2722,8 +2728,8 @@ static int is_between_delimiter_with_auto_indent
 	}
 
 	for (size_t i = 0; i < rules->pair_count; i++) {
-		if (prev == rules->pairs[i].open &&
-			current == rules->pairs[i].close &&
+		if (prev == (unsigned char) rules->pairs[i].open &&
+			current == (unsigned char) rules->pairs[i].close &&
 			rules->pairs[i].auto_indent)
 		{
 			return 1;

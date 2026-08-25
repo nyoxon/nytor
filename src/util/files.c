@@ -7,6 +7,7 @@
 #include <libgen.h>
 #include <limits.h>
 #include <sys/stat.h>
+#include <assert.h>
 
 #include "util/files.h"
 
@@ -369,6 +370,19 @@ int strjoin
 
 
 int isdir(const char* path) {
+	if (!path) {
+		return 0;
+	}
+
+	if (strlen(path) > 1 && path[0] == '~' && path[1] == '/') {
+		char* home = getenv("HOME");
+
+		if (home) {
+			strcat(home, path + 1);
+			path = home;
+		}
+	}
+
 	struct stat st;
 
 	if (stat(path, &st) == -1) {
