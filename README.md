@@ -188,6 +188,8 @@ Configuration files are stored in:
 
 There is no hex mode.
 
+There is no tilde expansion.
+
 The program currently doesn't handle huge files very well: that is,
 it will use a lot of memory if that happens.
 
