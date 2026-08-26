@@ -247,5 +247,9 @@ int normal_key_equal
 	const struct normal_key* b
 )
 {
+	if (a->content == KEY_CONTENT_NONE || b->content == KEY_CONTENT_NONE) {
+		return 0;
+	}
+	
 	return a->content == b->content && a->modifiers == b->modifiers;
 }

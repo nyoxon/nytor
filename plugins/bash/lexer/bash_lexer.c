@@ -793,7 +793,6 @@ static size_t bash_tokenize_line
 		return ntokens;
 	}
 
-	int first_tokens = 1;
 	int state_has_changed = 0;
 
 	while (i < len && ntokens < max_tokens) {
@@ -821,7 +820,6 @@ static size_t bash_tokenize_line
 				state_out
 			);
 
-			first_tokens = 0;
 			continue;
 		}
 
@@ -841,7 +839,6 @@ static size_t bash_tokenize_line
 				state_out
 			);
 
-			first_tokens = 0;
 			continue;
 		}
 
@@ -854,8 +851,6 @@ static size_t bash_tokenize_line
 				i,
 				len
 			};
-
-			first_tokens = 0;
 
 			break;
 		}
@@ -885,7 +880,6 @@ static size_t bash_tokenize_line
 				state_out
 			);
 
-			first_tokens = 0;
 			continue;
 		}
 
@@ -914,7 +908,6 @@ static size_t bash_tokenize_line
 				state_out
 			);
 
-			first_tokens = 0;
 			continue;
 		}
 
@@ -929,8 +922,6 @@ static size_t bash_tokenize_line
 				begin,
 				i
 			};
-
-			first_tokens = 0;
 
 			continue;
 		}
@@ -964,8 +955,7 @@ static size_t bash_tokenize_line
 
 			int index = -1;
 
-			if (first_tokens &&
-				is_keyword(line + begin, i - begin, &index)) 
+			if (is_keyword(line + begin, i - begin, &index)) 
 			{
 				hl = BASH_KEYWORDS[index].hl;
 			}
@@ -973,13 +963,11 @@ static size_t bash_tokenize_line
 			else if (is_lib(line + begin, i - begin)) 
 			{
 				hl = HL_LIB_FUNCTION;
-				first_tokens = 0;
 			}
 
 			else if (is_builtin(line + begin, i - begin)) 
 			{
 				hl = HL_POSIX;
-				first_tokens = 0;
 			}
 
 			else {
@@ -1058,8 +1046,6 @@ static size_t bash_tokenize_line
 				i + 1,
 			};
 
-			first_tokens = 0;
-
 			if (line[i] == U'$') {
 				i++;
 				size_t begin = i;
@@ -1084,12 +1070,21 @@ static size_t bash_tokenize_line
 				continue;
 			}
 
-			if (bash->state == BASH_LEX_NORMAL && line[i] == U'[') {
+			if (i == 0 || (i > 0 && line[i - 1] != U'\\')) {
+
+			if (bash->state == BASH_LEX_NORMAL && line[i] == U'[') 
+			{
 				bash->state = BASH_LEX_COMPOUND;
 			}
 
-			else if (bash->state == BASH_LEX_COMPOUND && line[i] == U']') {
-				bash->state = BASH_LEX_NORMAL;
+			else if (bash->state == BASH_LEX_COMPOUND && 
+				line[i] == U']')
+			{
+				if (i + 1 == len ||
+					(i + 1 < len && line[i + 1] != U']'))  
+				{
+					bash->state = BASH_LEX_NORMAL;
+				}
 			}
 
 			else if (bash->state == BASH_LEX_NORMAL &&
@@ -1104,10 +1099,6 @@ static size_t bash_tokenize_line
 				bash->state = BASH_LEX_NORMAL;
 			}
 
-			else if (bash->state == BASH_LEX_NORMAL &&
-				line[i] == U';')
-			{
-				first_tokens = 1;
 			}
 
 			i++;
@@ -1121,8 +1112,6 @@ static size_t bash_tokenize_line
 			i,
 			i + 1
 		};
-
-		first_tokens = 0;
 
 		i++;
 	}

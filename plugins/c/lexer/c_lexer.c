@@ -94,7 +94,6 @@ static const char* extensions[] = {
 	".h"
 };
 
-
 // -- pair DEFINED IN include/plugins/plugin.h
 static const struct pair C_PAIRS[] = {
 	{'{', '}', 1, 1},
@@ -955,7 +954,6 @@ suffix:
 
 	*i = pos;
 }
-
 
 // POSIX.1-2008
 static const struct specific_keyword C_POSIX[] = {

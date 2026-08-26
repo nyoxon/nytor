@@ -1090,7 +1090,7 @@ static struct normal_key parse_key
 ) 
 {
 	struct normal_key key = (struct normal_key) {
-		-1, 0
+		KEY_CONTENT_NONE, 0
 	};
 
 	if (!str || strlen(str) == 0) {
