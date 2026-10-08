@@ -169,6 +169,20 @@ make
 sudo make install
 ```
 
+There is also a .deb package that installs the program (check Releases section).
+
+## Default config file, themes and plugins
+
+When using `make install` to install the program, the default
+configuration files will be located in `/usr/local/share/nytor/`.
+If installed via the .deb package, they will be in
+`/usr/share/nytor/`. In either case, consider moving this folder
+to `~/.config/`, which is entirely optional (though, `~/.config/`
+is the first location checked for configuration files and is, by
+design, the standard place for them. Since it's optional, the
+program will still be able to find the default settings if you
+decide not to move the installed folder to `~/.config`).
+
 ### Uninstalling
 
 In order to uninstall the program:
