@@ -355,9 +355,7 @@ void config_check_equal_keybinds
 			struct normal_key a = config->keybinds[i];
 			struct normal_key b = config->keybinds[j];
 
-			if (a.content == b.content &&
-				a.modifiers == b.modifiers)
-			{
+			if (normal_key_equal(&a, &b)) {
 				*index1 = i;
 				*index2 = j;
 				return;
@@ -808,7 +806,7 @@ int config_load_specific_theme(struct config* config, const char* theme) {
 	if (strcmp(theme, "") == 0) {
 		return -1;
 	}
-
+	
 	char path[PATH_MAX_LENGTH];
 
 	if (make_theme_path(path, PATH_MAX_LENGTH, theme) < 0) {

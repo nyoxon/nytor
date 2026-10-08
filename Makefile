@@ -71,6 +71,7 @@ $(PLUGIN_BUILD_DIR)/%.so: $(PLUGIN_SRC_DIR)/%.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -shared -fPIC $< -o $@
 
 install: $(TARGET)
+	strip $(TARGET)
 	install -Dm755 $(TARGET) $(DESTDIR)$(BINDIR)/$(TARGET)
 
 	install -Dm644 config/config.ny $(DESTDIR)$(DATADIR)/config.ny

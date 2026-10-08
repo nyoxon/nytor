@@ -1,0 +1,13 @@
+# DATE: dd/mm/yy
+
+
+# 08/10/26
+
+BUGFIX: C lexer was behaving incorrectly when a multiline
+string was present in a preprocessor line
+
+CHANGE: Now, the entire line will be consired a preprocessor
+line
+
+BUGFIX: the "themes" command only considered ~/.config during
+the search. now it consider /usr/local/share/ and /usr/share/

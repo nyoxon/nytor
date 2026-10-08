@@ -94,6 +94,8 @@ static const struct keyword BASH_KEYWORDS[] = {
 	{"break",			5, HL_KEYWORD},
 	{"continue",		8, HL_KEYWORD},
 	{"return",			6, HL_KEYWORD},
+	{"declare",			7, HL_KEYWORD},
+	{"builtin",			7, HL_KEYWORD},
 	
 	{"local",			5, HL_SPECIFIER},
 

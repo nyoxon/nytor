@@ -1504,14 +1504,27 @@ static size_t c_tokenize_line
 	int state_has_changed = 0;
 
 	while (i < len && ntokens < max_tokens) {
+		// ignore whitespaces
 		while (i < len && u32_isspace(line[i])) {
 			i++;
 		}
-
+		
+		
+		// EOF
 		if (i >= len) {
 			break;
 		}
-
+		
+		
+		// both the symbols defining the block comment
+		// and the content within it must be considerer
+		// a block comment
+		
+		// if the opening comment symbol is not the first
+		// character of a line, then any content preceding
+		// that symbol should not be considered part of
+		// a block comment (the same applies to content
+		// following the closing comment symbol)
 		if (c->state == C_LEX_BLOCK_COMMENT ||
 			(!state_has_changed && state_in == LEX_STATE_BLOCK_COMMENT)) 
 		{
@@ -1553,47 +1566,10 @@ static size_t c_tokenize_line
 			first_token = 0;
 			continue;
 		}
-
-		if (c->state == C_LEX_PREPROCESSOR && line[i] == U'<') {
-			tokens[ntokens++] = (struct token) {
-				HL_PUNCTUATION,
-				i,
-				i + 1
-			};
-
-			i++;
-			size_t begin = i;
-
-			while (i < len) {
-				if (line[i] == U'>') {
-					break;
-				}
-
-				i++;
-			}
-
-			if (begin != i) {
-				tokens[ntokens++] = (struct token) {
-					HL_STRING,
-					begin,
-					i
-				};				
-			}
-
-			if (i < len && line[i] == U'>') {
-				tokens[ntokens++] = (struct token) {
-					HL_PUNCTUATION,
-					i,
-					i + 1
-				};
-
-				i++;			
-			}
-
-			first_token = 0;
-			continue;			
-		}
-
+		
+		
+		// a string has started on a line before the
+		// current one
 		if (c->state == C_LEX_STRING ||
 			(!state_has_changed && state_in == LEX_STATE_STRING))
 		{
@@ -1613,7 +1589,10 @@ static size_t c_tokenize_line
 			first_token = 0;
 			continue;
 		}
-
+		
+		
+		// a char has started on a line before the
+		// current one
 		if (c->state == C_LEX_CHAR ||
 			(!state_has_changed && state_in == LEX_STATE_CHAR))
 		{
@@ -1698,7 +1677,8 @@ static size_t c_tokenize_line
 		}
 
 
-		// preprocess
+		// preprocess. the entire line will be
+		// considered a preprocess line
 		if (first_token && i < len && line[i] == U'#') {
 			size_t begin_line = i;
 			i++;
@@ -1720,33 +1700,18 @@ static size_t c_tokenize_line
 				i - begin_word)) 
 			{
 				hl = HL_PREPROCESSOR;
-				
-				if (line[begin_word] == U'p') {
-					tokens[ntokens++] = (struct token) {
-						hl,
-						0,
-						len
-					};
-					
-					break;
-				}
 			} else {
 				hl = HL_NORMAL;
 			}
 
-			tokens[ntokens++] = (struct token) {
-				hl,
-				begin_line,
-				begin_line + 1
-			};
 
 			first_token = 0;
 
 			if (hl == HL_PREPROCESSOR) {
 				tokens[ntokens++] = (struct token) {
 					hl,
-					begin_word,
-					i
+					begin_line,
+					len // entire line
 				};
 
 				c->state = C_LEX_PREPROCESSOR;
@@ -1841,6 +1806,10 @@ static size_t c_tokenize_line
 			// cannot start with a number
 
 			size_t begin = i;
+			
+			// ex: foo.x
+			// ex: foo->x
+			// x must be considered a "method" or "attribute"
 			int is_meth_or_att = 
 				(begin > 0 && line[begin - 1] == U'.') ||
 				(begin > 1 && line[begin - 1] == U'>' && 
@@ -1868,15 +1837,18 @@ static size_t c_tokenize_line
 
 				size_t j = i;
 
-				// function
 				while (j < len && u32_isspace(line[j])) {
 					j++;
 				}
-
+				
+				
+				// a function
 				if (j < len && line[j] == U'(') {
 					hl = HL_FUNCTION;
 				}
-
+				
+				
+				// a label (using HL_FUNCTION :D)
 				if (first_token && j < len && line[j] == U':') {
 					hl = HL_FUNCTION;
 				}

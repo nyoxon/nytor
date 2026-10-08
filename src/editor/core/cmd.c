@@ -3355,16 +3355,26 @@ int editor_handle_cmd
 		DIR* dir = opendir(path);
 
 		if (!dir) {
-			prompt_init(
-				&editor->status_bar,
-				strerror(errno),
-				PT_INFO
-			);
-
-			window_close(&editor->window);
-			editor->has_window = 0;
-
-			goto cleanup;			
+			sprintf(path, "/usr/local/share/nytor/themes");
+			dir = opendir(path);
+			
+			if (!dir) {
+				sprintf(path, "/usr/share/nytor/themes");
+				dir = opendir(path);
+				
+				if (!dir) {
+					prompt_init(
+						&editor->status_bar,
+						strerror(errno),
+						PT_INFO
+					);
+		
+					window_close(&editor->window);
+					editor->has_window = 0;
+		
+					goto cleanup;
+				}
+			}
 		}
 
 		struct dirent* entry;

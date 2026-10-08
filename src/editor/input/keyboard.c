@@ -435,7 +435,6 @@ int editor_handle_normal_input(Editor* editor, struct normal_key key) {
 	}
 
 	if (normal_key_equal(&key, &editor->config.keybinds[ACTION_CLOSE_FILE_FORCED])) {
-		log_write(&editor->log, "%zu", content);
 		editor_close_file_forced(editor, editor->actual_file_index);
 		return 1;
 	}

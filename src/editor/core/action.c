@@ -93,7 +93,12 @@ void editor_open_terminal(Editor* editor) {
 		int ret = poll(fds, 2, 100);
 
 		if (ret == -1) {
-			perror("poll");
+			prompt_init(
+				&editor->status_bar,
+				strerror(errno),
+				PT_INFO
+			);
+
 			break;
 		}
 
@@ -1615,8 +1620,10 @@ void editor_scroll_right(Editor* editor) {
 		editor_clamp_cursor_to_view(editor);
 	}
 
-	log_write(&editor->log, "editor_scroll_right: col = %zu",
-		editor->view.col_offset);
+	if (editor->debug_mode) {
+		log_write(&editor->log, "editor_scroll_right: col = %zu",
+			editor->view.col_offset);
+	}
 }
 
 void editor_scroll_up_terminal_size(Editor* editor) {
@@ -4069,8 +4076,6 @@ static void range_selection_replace
 
 			if (replacements) {
 				Position pos = (Position) { index, i };
-
-				log_write(&editor->log, "(%zu, %zu)", index, i);
 
 				vector_push(replacements, &pos);
 			}
