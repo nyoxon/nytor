@@ -44,6 +44,7 @@ size_t line_tokens_size(const Line* line) {
 
 void line_tokenize(Line* line, struct lexer* lexer) {
 	if (u32string_is_empty(&line->text)) {
+		// propagation occurs in file_create/retokenize/_tokens
 		line->dirty = 0;
 		return;
 	}

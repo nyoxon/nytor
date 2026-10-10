@@ -18,7 +18,6 @@
 #include "plugins/plugin.h"
 #include "plugins/language_syntax.h"
 
-#define MAX_LINE_TOKENS 256
 
 /// --- DEFINITION OF A FILE ---
 // File must be a logical representation of the file itself.

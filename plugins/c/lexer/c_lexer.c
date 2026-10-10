@@ -305,7 +305,7 @@ static const struct specific_keyword C_LIB[] = {
 	{"strchrnul",	9},
 
 	{"strstr",		6},
-	{"strcasestr",	1},
+	{"strcasestr", 10},
 	{"strpbrk",		7},
 
 	{"strtok",		6},
@@ -469,7 +469,7 @@ static const struct specific_keyword C_LIB[] = {
 
 	// complex.h
 	{"cabs",		4},
-	{"casbf",		5},
+	{"cabsf",		5},
 	{"cabsl",		5},
 	{"carg",		4},
 	{"cargf",		5},
@@ -507,7 +507,7 @@ static const struct specific_keyword C_LIB[] = {
 	{"isgraph",		7},
 	{"islower",		7},
 	{"isprint",		7},
-	{"inpunct",		7},
+	{"ispunct",		7},
 	{"isspace",		7},
 	{"isupper",		7},
 	{"isxdigit",	8},

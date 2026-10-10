@@ -127,6 +127,45 @@ void file_push(File* file, Line* line) {
 	vector_push(&file->lines, line);
 }
 
+// attempts to read exactly n bytes
+static ssize_t readn
+(
+	int fd,
+	void* vptr,
+	size_t n
+)
+{
+	size_t nleft;
+	ssize_t nread;
+	char* ptr;
+
+	ptr = vptr;
+	nleft = n;
+
+	while (nleft > 0) {
+		if ((nread = read(fd, ptr, nleft)) < 0) {
+			// interrupted by a signal, then reset
+			if (errno == EINTR) {
+				nread = 0;
+			}
+
+			// error
+			else {
+				return -1;
+			}
+		}
+
+		// EOF
+		else if (nread == 0) {
+			break;
+		}
+
+		nleft -= nread;
+		ptr += nread;
+	}
+
+	return n - nleft;
+}
 
 // open and read a fd
 static uint32_t* read_file
@@ -139,16 +178,21 @@ static uint32_t* read_file
 	// return = NULL and size = -1 -> error
 	// return = NULL and size = 0 -> empty file
 
+	assert(path != NULL && "the path passed to read_file is NULL");
+	assert(size != NULL && "the size pointer passed to read_file is NULL");
+
 	int fd = open(path, O_RDONLY);
 
 	if (fd < 0) {
 		if (result) {
+			// if the files doesn't exist, a new one will be created
 			if (errno == ENOENT) {
 				result_set_reason(result,
 					"read_file: file does not exist");
 				result->type = ERROR_FILE_DOES_NOT_EXIST;
 			} 
 
+			// otherwise, fatal error
 			else {
 				char reason[512];
 
@@ -167,6 +211,24 @@ static uint32_t* read_file
 	}
 
 	off_t fsize = lseek(fd, 0, SEEK_END);
+
+	if (fsize < 0) {
+		close(fd);
+
+		if (result) {
+			char reason[512];
+
+			sprintf(reason,
+				"read_file: %s",
+				strerror(errno));
+
+			result_set_reason(result, reason);
+			result->type = ERROR_SYS_READ;
+		}
+
+		*size = -1;
+		return NULL;
+	}
 
 	if (fsize == 0) {
 		close(fd);
@@ -198,11 +260,31 @@ static uint32_t* read_file
 			result->type = ERROR_MALLOC;
 		}
 
+		*size = -1;
 		return NULL;
 	}
 
-	ssize_t read_bytes = read(fd, bytes, fsize);
+	ssize_t read_bytes = readn(fd, bytes, fsize);
 	close(fd);
+
+	// if (read_bytes < 0) {
+	// 	free(bytes);
+
+	// 	if (result) {
+	// 		char reason[512];
+
+	// 		sprintf(reason,
+	// 			"read_file: %s",
+	// 			strerror(errno));
+
+	// 		result_set_reason(result, reason);
+	// 		result->type = ERROR_SYS_READ;
+	// 	}
+
+	// 	*size = -1;
+	// 	return NULL;
+	// }
+
 
 	if (read_bytes < 0) {
 		free(bytes);
@@ -218,6 +300,25 @@ static uint32_t* read_file
 			result->type = ERROR_SYS_READ;
 		}
 
+		*size = -1;
+		return NULL;
+	}
+
+	if (read_bytes < fsize) {
+		free(bytes);
+
+		if (result) {
+			char reason[512];
+
+			sprintf(reason,
+				"read_file: %s",
+				"read_bytes (actually read) is less than fsize (total)");
+
+			result_set_reason(result, reason);
+			result->type = ERROR_SYS_READ;
+		}
+
+		*size = -1;
 		return NULL;
 	}
 
@@ -237,6 +338,7 @@ static uint32_t* read_file
 			result->type = ERROR_MALLOC;
 		}
 
+		*size = -1;
 		return NULL;
 	}
 
@@ -247,6 +349,8 @@ static uint32_t* read_file
 		uint32_t cp;
 
 		int n = u32_decode(bytes + i, read_bytes - i, &cp);
+
+		// TODO: handle files with invalid UTF-8 better
 
 		if (n < 0) { // invalid UTF-8
 			break;
@@ -721,6 +825,7 @@ void file_create_tokens(File* file, struct lexer* lexer) {
 
 			line_tokenize(line, lexer); // line.dirty = 0
 
+			// propagation
 			if (u32string_is_empty(&line->text)) {
 				line->state_out = state;
 			}

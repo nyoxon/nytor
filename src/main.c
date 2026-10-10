@@ -69,7 +69,7 @@ int main(int argc, char* argv[]) {
 
 
 	// --- EDITOR INIT AND CONFIGURATIONS ---
-	Editor editor;
+	Editor editor = {0};
 
 	if (editor_init(&editor, &eoptions) < 0){
 		if (editor.result.type != ERROR_OK) {
@@ -295,12 +295,12 @@ static int parse_args
 		{0, 0, 0, 0}
 	};
 
-	while ((opt = getopt_long(argc, argv, "+dvhr", long_opts, NULL)) != 1) 
+	while ((opt = getopt_long(argc, argv, "+dvhr", long_opts, NULL)) > 0) 
 	{
 		switch (opt) {
 			case 'd':
 				eoptions->debug_mode = 1;
-				return 0;
+				break;
 
 			case 'h':
 				print_help();
@@ -312,10 +312,10 @@ static int parse_args
 
 			case 'r':
 				eoptions->start_readonly = 1;
-				return 0;
+				break;
 
 			default:
-				return 0;
+				break;
 		}
 	}
 

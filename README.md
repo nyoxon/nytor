@@ -26,7 +26,7 @@ Currently supported:
 * C
 * bash
 * Make
-* Rust *(planned)*
+* Gdscript (early dev)
 
 ### Autocomplete
 

@@ -1050,6 +1050,11 @@ static size_t bash_tokenize_line
 
 			if (line[i] == U'$') {
 				i++;
+
+				if (i >= len) {
+					continue;
+				}
+				
 				size_t begin = i;
 
 				if (is_special_punctuation(line[i])) {

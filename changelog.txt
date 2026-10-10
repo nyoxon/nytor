@@ -11,3 +11,24 @@ line
 
 BUGFIX: the "themes" command only considered ~/.config during
 the search. now it consider /usr/local/share/ and /usr/share/
+
+
+# 10/10/26
+
+BUGFIX: added a bounds check to the Bash lexer when tokenizing
+a '$' at the end of a line
+
+CHANGE: file reading now checks lseek errors and uses readn to
+handle interrupted and partial read calls
+
+BUGFIX: command-line parsing now processes multiple options
+
+BUGFIX: editor is initialized to zero before editor_init is called
+
+BUGFIX: corrected several misspelled C library names in the C lexer
+
+CHANGE: added a script to build language plugins and copy them to
+plugins/shared/
+
+CHANGE: a GDScript lexer is in development; added a GDScript sample
+file for highlighting
