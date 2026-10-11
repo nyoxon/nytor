@@ -45,6 +45,7 @@ const char PROMPT_FILE_EXISTS_INTERNALLY[] = "operation denied: file is already 
 const char PROMPT_UNSAVED_CHANGES[] = "changes haven't been saved, what do you wanna do?";
 const char PROMPT_SAVE_BEFORE_EXIT[] = "save before exit?";
 const char PROMPT_FILE_UNSAVED_CHANGES[] = "operation denied: changes haven't been saved";
+const char PROMPT_FAILED[] = "operation failed (internal error)";
 
 
 Prompt prompt_new(TerminalSize tsize) {

@@ -123,6 +123,23 @@ int editor_unindent_line
 int editor_unindent_selection_or_line(Editor* editor);
 
 
+typedef enum {
+	INSERTAT_CURSOR,
+	INSERTAT_END,
+	INSERTAT_START,
+} InsertAtType;
+
+int editor_insert_pattern_at
+(
+	Editor* editor, 
+	const u32string* pattern,
+	InsertAtType type
+);
+
+int editor_prepend_pattern(Editor* editor, const u32string* pattern);
+int editor_append_pattern(Editor* editor, const u32string* pattern);
+
+
 int editor_comment_line_or_selection(Editor* editor);
 
 int editor_move_line_or_selection_up(Editor* editor);

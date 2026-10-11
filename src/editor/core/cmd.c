@@ -903,6 +903,95 @@ const cmd replace = {
 };
 
 
+// --- INSERTAT ---
+const cmd insertat = {
+	.name = "insertat",
+	.description =
+		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨\n"
+		"Name: insertat\n"
+		"------------------------------------------------------------------\n"
+		"Args (required): position pattern\n"
+		"------------------------------------------------------------------\n"
+		"Action: insert a 'pattern' into a line or a selection of lines at the\n"
+		"required 'position'.\n"
+		"------------------------------------------------------------------\n"
+		"More:\n\n"
+		" ---- PATTERN FORMAT ---- \n\n"
+		"If there is a space character inside the pattern, use quotation marks \n"
+		"\" \" to delimit the pattern itself. If there isn't, the use of quotation\n"
+		"marks is optional. In order to pass a pattern with spaces and that contains \n"
+		"a \", you must escape this \" using \\ .\n\n"
+		" ---- SELECTION, BEHAVIOR AND LIMITATIONS ----\n\n"
+		"If there is an active selection, the pattern will be inserted to every \n"
+		"line within it; otherwise, it will be inserted to the line at the cursor.\n"
+		" ---- POSITIONS ----\n\n"
+		"	cursor -> inserts starting at the horizontal cursor position. Lines shorter\n"
+		"than the cursor's horizontal position will be modified starting at the end of them.\n\n"
+		"	start -> inserts starting at the beginning of the lines.\n\n"
+		"	end -> inserts starting at the end of the lines.\n\n"
+		" ---- EXAMPLES ----"
+		"In order to insert at the cursor position:\n\n"
+		"> insertat cursor \"hello world\"\n"
+		"------------------------------------------------------------------\n"
+		"Errors: it is an error not to pass a 'pattern' or 'position'.\n"
+		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨"
+};
+
+
+// --- APPEND ---
+const cmd append = {
+	.name = "append",
+	.description =
+		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨\n"
+		"Name: append\n"
+		"------------------------------------------------------------------\n"
+		"Args (required): pattern\n"
+		"------------------------------------------------------------------\n"
+		"Action: appends 'pattern' to the end of lines.\n"
+		"------------------------------------------------------------------\n"
+		"More:\n\n"
+		" ---- PATTERN FORMAT ---- \n\n"
+		"If there is a space character inside the pattern, use quotation marks \n"
+		"\" \" to delimit the pattern itself. If there isn't, the use of quotation\n"
+		"marks is optional. In order to pass a pattern with spaces and that contains \n"
+		"a \", you must escape this \" using \\ .\n\n"
+		" ---- SELECTION, BEHAVIOR AND LIMITATIONS ----\n\n"
+		"(1) If there is an active selection, the pattern will be appended to every \n"
+		"line within it; otherwise, it will be appended to the line at the cursor.\n"
+		"(2) Equivalent to 'insertat end'.\n"
+		"------------------------------------------------------------------\n"
+		"Errors: it is an error not to pass a 'pattern'.\n"
+		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨"
+};
+
+
+// --- PREPEND ---
+const cmd prepend = {
+	.name = "prepend",
+	.description =
+		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨\n"
+		"Name: prepend\n"
+		"------------------------------------------------------------------\n"
+		"Args (required): pattern\n"
+		"------------------------------------------------------------------\n"
+		"Action: prepends 'pattern' to the beginning of lines.\n"
+		"------------------------------------------------------------------\n"
+		"More:\n\n"
+		" ---- PATTERN FORMAT ---- \n\n"
+		"If there is a space character inside the pattern, use quotation marks \n"
+		"\" \" to delimit the pattern itself. If there isn't, the use of quotation\n"
+		"marks is optional. In order to pass a pattern with spaces and that contains \n"
+		"a \", you must escape this \" using \\ .\n\n"
+		" ---- SELECTION, BEHAVIOR AND LIMITATIONS ----\n\n"
+		"(1) If there is an active selection, the pattern will be prepended to every \n"
+		"line within it; otherwise, it will be prepended to the line at the cursor.\n"
+		"(2) Equivalent to 'insertat start'.\n"
+		"------------------------------------------------------------------\n"
+		"Errors: it is an error not to pass a 'pattern'.\n"
+		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨"
+};	
+
+
 // --- UNDO ---
 const cmd undo = {
 	.name = "undo",
@@ -1406,6 +1495,9 @@ const cmd help = {
 		"-    indent\n"
 		"-    unindent\n"
 		"-    replace\n"
+		"-    insertat\n"
+		"-    append\n"
+		"-    prepend\n"
 		"-    undo\n"
 		"-    redo\n"
 		"-    themes\n"
@@ -1445,6 +1537,9 @@ const cmd COMMANDS[] = {
 	unindent,
 	comment,
 	replace,
+	insertat,
+	append,
+	prepend,
 	undo,
 	redo,
 	terminal,
@@ -1627,6 +1722,21 @@ static void handle_help(Editor* editor, char* words[], size_t n) {
 		else if (strcmp(words[1], replace.name) == 0) {
 			cb.text = u32string_from(replace.description);
 			sprintf(buf, "%s man", replace.name);
+		}
+
+		else if (strcmp(words[1], insertat.name) == 0) {
+			cb.text = u32string_from(insertat.description);
+			sprintf(buf, "%s man", insertat.name);
+		}
+
+		else if (strcmp(words[1], append.name) == 0) {
+			cb.text = u32string_from(append.description);
+			sprintf(buf, "%s man", append.name);
+		}
+
+		else if (strcmp(words[1], prepend.name) == 0) {
+			cb.text = u32string_from(prepend.description);
+			sprintf(buf, "%s man", prepend.name);
 		}
 
 		else if (strcmp(words[1], undo.name) == 0) {
@@ -2637,6 +2747,167 @@ int editor_handle_cmd
 	}
 
 
+	/// --- INSERTAT ---
+	if (strcmp(words[0], insertat.name) == 0) {
+		if (n < 3) {
+			prompt_init(
+				&editor->status_bar,
+				PROMPT_INSUFFICIENT_ARGS,
+				PT_INFO
+			);
+
+			goto cleanup;
+		}
+
+		InsertAtType type;
+
+		if (strcmp(words[1], "cursor") == 0) {
+			type = INSERTAT_CURSOR;
+		}
+
+		else if (strcmp(words[1], "start") == 0) {
+			type = INSERTAT_START;
+		}
+
+		else if (strcmp(words[1], "end") == 0) {
+			type = INSERTAT_END;
+		}
+
+		else {
+			prompt_init(
+				&editor->status_bar,
+				PROMPT_INVALID_ARG,
+				PT_INFO
+			);
+
+			goto cleanup;
+		}
+
+		char* pattern_text;
+
+		if (words_to_u8string(editor, words + 2, n - 2, &pattern_text) < 0) {
+			prompt_init(
+				&editor->status_bar,
+				PROMPT_FAILED,
+				PT_INFO
+			);
+
+			goto cleanup;
+		}
+
+		u32string pattern = u32string_from(pattern_text);
+		free(pattern_text);
+
+		if (u32string_is_empty(&pattern)) {
+			u32string_free(&pattern);
+			prompt_init(&editor->status_bar, PROMPT_EMPTY_STRING, PT_INFO);
+			goto cleanup;
+		}
+
+		if (editor_insert_pattern_at(editor, &pattern, type) < 0) {
+			prompt_init(
+				&editor->status_bar,
+				PROMPT_FAILED,
+				PT_INFO
+			);
+		}
+
+		u32string_free(&pattern);
+		goto cleanup;				
+	}
+
+	/// --- APPEND ---
+	if (strcmp(words[0], append.name) == 0) {
+		if (n == 1) {
+			prompt_init(
+				&editor->status_bar,
+				PROMPT_INSUFFICIENT_ARGS,
+				PT_INFO
+			);
+
+			goto cleanup;
+		}
+
+		char* pattern_text;
+
+		if (words_to_u8string(editor, words + 1, n - 1, &pattern_text) < 0) {
+			prompt_init(
+				&editor->status_bar,
+				PROMPT_FAILED,
+				PT_INFO
+			);
+
+			goto cleanup;
+		}
+
+		u32string pattern = u32string_from(pattern_text);
+		free(pattern_text);
+
+		if (u32string_is_empty(&pattern)) {
+			u32string_free(&pattern);
+			prompt_init(&editor->status_bar, PROMPT_EMPTY_STRING, PT_INFO);
+			goto cleanup;
+		}
+
+		if (editor_append_pattern(editor, &pattern) < 0) {
+			prompt_init(
+				&editor->status_bar,
+				PROMPT_FAILED,
+				PT_INFO
+			);
+		}
+
+		u32string_free(&pattern);
+		goto cleanup;
+	}
+
+
+	/// --- PREPEND ---
+	if (strcmp(words[0], prepend.name) == 0) {
+		if (n == 1) {
+			prompt_init(
+				&editor->status_bar,
+				PROMPT_INSUFFICIENT_ARGS,
+				PT_INFO
+			);
+
+			goto cleanup;
+		}
+
+		char* pattern_text;
+
+		if (words_to_u8string(editor, words + 1, n - 1, &pattern_text) < 0) {
+			prompt_init(
+				&editor->status_bar,
+				PROMPT_FAILED,
+				PT_INFO
+			);
+
+			goto cleanup;
+		}
+
+		u32string pattern = u32string_from(pattern_text);
+		free(pattern_text);
+
+		if (u32string_is_empty(&pattern)) {
+			u32string_free(&pattern);
+			prompt_init(&editor->status_bar, PROMPT_EMPTY_STRING, PT_INFO);
+			goto cleanup;
+		}
+
+		if (editor_prepend_pattern(editor, &pattern) < 0) {
+			prompt_init(
+				&editor->status_bar,
+				PROMPT_FAILED,
+				PT_INFO
+			);
+		}
+
+		u32string_free(&pattern);
+		goto cleanup;
+	}
+
+
 	/// --- REPLACE ---
 	if (strcmp(words[0], replace.name) == 0) {
 		if (n == 1) {
@@ -2832,7 +3103,7 @@ int editor_handle_cmd
 			if (!editor_find_next_pattern_within_selection(
 					editor,
 					&pattern,
-					1))
+					0))
 			{
 				prompt_init(
 					&editor->status_bar,

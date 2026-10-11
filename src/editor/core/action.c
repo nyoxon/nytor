@@ -1377,6 +1377,12 @@ int editor_paste_clipboard(Editor* editor) {
 
 		stack_clear(&editor->actual_file->redo);
 		stack_push(&editor->actual_file->undo, &op);
+
+		// the added content is selected
+		selection_start(&editor->sel, cursor_remove);
+		selection_update(&editor->sel, cursor_insert);
+
+		editor->selecting = 0;
 	}
 
 	if (editor->debug_mode) {
@@ -3555,6 +3561,110 @@ int editor_unindent_selection_or_line(Editor* editor) {
 
 
 
+/// --- APPEND AND PREPEND ---
+
+int editor_insert_pattern_at
+(
+	Editor* editor, 
+	const u32string* pattern,
+	InsertAtType type
+)
+{
+	int ret;
+
+	Position first = { 0, editor->cursor.pos.y };
+	Position last = first;
+
+	if (editor->sel.active) {
+		selection_normalize(&editor->sel, &first, &last);
+	}
+
+	editor_selection_clear(editor);
+
+	int failed = 0;
+
+	size_t start_cursor_x = editor->cursor.pos.x;
+
+	for (size_t y = first.y; y <= last.y; y++) {
+		size_t start;
+		size_t line_size = file_size_line(
+			&editor->actual_file->file,
+			y
+		);
+
+		switch (type) {
+		case INSERTAT_CURSOR: {
+			if (start_cursor_x > line_size) {
+				start = line_size;
+			}
+
+			else {
+				start = start_cursor_x;
+			}
+
+			break;
+		}
+
+		case INSERTAT_START:
+			start = 0;
+			break;
+
+		case INSERTAT_END:
+			start = line_size;
+			break;
+
+		default:
+			assert(1 == 2 && "invalid INSERTART type");
+		}
+
+		editor_cursor_move(
+			editor,
+			(Position) { start, y }
+		);
+
+		// it's not very efficient to insert one character
+		// at a time instead of adding everything at once,
+		// but the first option is much simpler
+		// another downside is that the undo doesn't consider
+		// the entire pattern, but only the words that make
+		// up it
+
+		// TODO: use a clipboard instead
+		for (size_t x = 0; x < u32string_size(pattern); x++) {
+			if (editor_insert_char(editor, u32string_char(pattern, x)) < 0) {
+				failed = 1;
+				break;
+			}
+		}
+
+		if (failed) {
+			ret = -1;
+			break;
+		}
+	}
+
+	ret = 0;
+	return ret;
+}
+
+int editor_append_pattern(Editor* editor, const u32string* pattern) {
+	return editor_insert_pattern_at(
+		editor,
+		pattern,
+		INSERTAT_END
+	);
+}
+
+
+int editor_prepend_pattern(Editor* editor, const u32string* pattern) {
+	return editor_insert_pattern_at(
+		editor,
+		pattern,
+		INSERTAT_START
+	);
+}
+
+
 /// --- COMMENT ---
 
 // for autocompleters: this function treats the comment
@@ -3955,7 +4065,7 @@ static void range_selection_delete
 		}
 
 		if (i == a.y) {
-			if (a.x >= u32string_size(&line->text) - 1) {
+			if (a.x >= u32string_size(&line->text)) {
 				continue;
 			}
 
@@ -3963,7 +4073,7 @@ static void range_selection_delete
 			find_from = a.x;
 		}
 
-		else if (i == b.y) {
+		if (i == b.y) {
 			if (b.x == 0) {
 				continue;
 			}
@@ -3993,6 +4103,17 @@ static void range_selection_delete
 				Position pos = (Position) { index, i };
 
 				vector_push(replacements, &pos);
+			}
+
+			// find_until = b.x <= line_size
+			if (i == b.y) {
+				// find_until = b.x - pattern_size
+				find_until -= pattern_size;
+			}
+
+			// find_until = line_size
+			else {
+				find_until = u32string_size(&line->text) - pattern_size;
 			}
 
 			u32string_remove_range(
@@ -4035,8 +4156,11 @@ static void range_selection_replace
 		Line* line = vector_get(&editor->actual_file->file.lines, i);
 
 		ssize_t index;
+
+		// where the search begins
 		size_t pos = 0;
 
+		// where the search ends
 		size_t find_until = u32string_size(&line->text);
 
 		if (find_until == 0) {
@@ -4044,15 +4168,22 @@ static void range_selection_replace
 		}
 
 		if (i == a.y) {
-			if (a.y == u32string_size(&line->text) - 1) {
+			// end of the line, then nothing to find
+			if (a.x >= u32string_size(&line->text)) {
 				continue;
 			}
 
 			pos = a.x;
+
+			// single line selection, then find_util <= u32string_size(&line->text)
+			if (a.y == b.y) {
+				find_until = b.x;
+			}
 		}
 
-		else if (i == b.y) {
-			if (b.y == 0) {
+		if (i == b.y) {
+			// beginning of the line, then nothing to find
+			if (b.x == 0) {
 				continue;
 			}
 
@@ -4094,6 +4225,24 @@ static void range_selection_replace
 			);
 
 			pos = index + text_size;
+
+			// more adequate names
+			size_t old_size = pattern_size;
+			size_t new_size = text_size;
+
+			if (i == b.y) {
+				if (new_size >= old_size) {
+					find_until += new_size - old_size;
+				}
+
+				else {
+					find_until -= old_size - new_size;
+				}
+			}
+
+			else {
+				find_until = u32string_size(&line->text);
+			}
 		}
 	}
 
@@ -4607,8 +4756,6 @@ int editor_find_next_pattern_within_selection
 
 	Position a, b;
 	selection_normalize(&editor->sel, &a, &b);
-
-	b = (Position) { b.x, b.y + 1 };
 
 	if (find_from_range(editor, a, b, pattern, select_if_find)) {
 		return 1;

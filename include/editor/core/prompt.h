@@ -44,6 +44,7 @@ extern const char PROMPT_HAS_EQUAL_FILE[];
 extern const char PROMPT_UNSAVED_CHANGES[];
 extern const char PROMPT_SAVE_BEFORE_EXIT[];
 extern const char PROMPT_FILE_UNSAVED_CHANGES[];
+extern const char PROMPT_FAILED[];
 
 typedef enum {
 	PT_INTERACTIVE,
