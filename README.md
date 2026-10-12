@@ -223,6 +223,8 @@ Configuration files are stored in:
 
 ## Limitations
 
+The editor assumes it is dealing with seekable files (ex: regular files).
+
 There is no hex mode.
 
 There is no tilde expansion.
