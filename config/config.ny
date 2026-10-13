@@ -248,4 +248,5 @@ find = "ctrl+f"
 
 language = c
 language = make
+language = lua
 language = bash

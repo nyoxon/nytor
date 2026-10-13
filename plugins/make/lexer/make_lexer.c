@@ -1,3 +1,15 @@
+// Plugin: gnu/make syntax highlighting lexer
+// Author: nyoxon
+// Based on:
+// Created in version: 1.1
+// Last revision in version: 1.1
+
+// CURRENT STATE OF THIS PLUGIN:
+// i haven't implemented this plugin with every
+// possible Make language feature in mind, but rather
+// focused on the simplest cases which are the ones
+// i actually use
+
 #include <stdlib.h>
 #include <stddef.h>
 #include <ctype.h>

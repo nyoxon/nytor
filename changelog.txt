@@ -1,3 +1,10 @@
 # DATE: dd/mm/yy
 
 # version: 1.2
+
+13/10/26
+
+ADDED: Lua lexer
+
+ADDED: some useful information at the beginning of 
+source codes of lexers

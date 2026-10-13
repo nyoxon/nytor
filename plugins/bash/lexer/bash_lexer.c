@@ -1,3 +1,9 @@
+// Plugin: Bash syntax highlighting lexer
+// Based on: voices in my head
+// Author: nyoxon
+// Created in version: 1.1
+// Last revision in version: 1.1.1
+
 #include <stdlib.h>
 #include <stddef.h>
 #include <ctype.h>

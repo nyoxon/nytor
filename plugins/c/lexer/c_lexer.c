@@ -1,3 +1,9 @@
+// Plugin: C syntax highlighting lexer
+// Based on: C23, ISO C and POSIX standards
+// Author: nyoxon
+// Created in version: 1.0
+// Last revision in version: 1.1.1
+
 #include <stdlib.h>
 #include <stddef.h>
 #include <ctype.h>
