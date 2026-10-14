@@ -8,3 +8,8 @@ ADDED: Lua lexer
 
 ADDED: some useful information at the beginning of 
 source codes of lexers
+
+14/10/26
+
+BUGFIX: HL_COMMENT and empty lines were not being
+considered in editor_find_actual_block and aux functions

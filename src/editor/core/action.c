@@ -4821,8 +4821,10 @@ static int must_ignore_token
 		);
 
 		if ((token->highlight == HL_STRING ||
-			 token->highlight == HL_CHAR) &&
-			x >= token->begin && x <= token->end) {
+			 token->highlight == HL_CHAR ||
+			 token->highlight == HL_COMMENT) &&
+			x >= token->begin && x <= token->end) 
+		{
 			if (token_begin) {
 				*token_begin = token->begin;
 			}
@@ -4878,7 +4880,8 @@ static int find_for_open_delimiter
 			size_t token_begin;
 
 			if (has_lexer &&
-				must_ignore_token(tokens, x, &token_begin, NULL)) {
+				must_ignore_token(tokens, x, &token_begin, NULL)) 
+			{
 				x = token_begin;
 				continue;
 			}
@@ -4941,6 +4944,11 @@ static int find_for_close_delimiter
 		);
 
 		size_t size = u32string_size(line);
+		
+		if (size == 0) {
+			continue;
+		}
+		
 		size_t x = (y == start.y) ? start.x: 0;
 
 		for (; x < size; x++) {
@@ -5015,6 +5023,11 @@ static int find_actual_block
 		);
 
 		size_t size = u32string_size(line);
+		
+		if (size == 0) {
+			continue;
+		}
+		
 		size_t x = (y == start.y) ? start.x + 1 : size;
 
 		for (; x-- > 0;) {
@@ -5214,13 +5227,19 @@ int editor_find_actual_block(Editor* editor) {
 		);
 
 		size_t size = u32string_size(line);
+		
+		if (pos.x > size) {
+			return 0;
+		}
 
 		if (pos.x == size && size > 0) {
 			pos_x_equals_size = 1;
 			pos.x = size - 1;
 		}
-
-		actual_char = u32string_char(line, pos.x);
+		
+		actual_char = (size == 0)
+			? '\0'
+			: u32string_char(line, pos.x);
 	}
 
 	char complement = '\0';
