@@ -1509,19 +1509,7 @@ static size_t c_tokenize_line
 	int first_token = 1;
 	int state_has_changed = 0;
 
-	while (i < len && ntokens < max_tokens) {
-		// ignore whitespaces
-		while (i < len && u32_isspace(line[i])) {
-			i++;
-		}
-		
-		
-		// EOF
-		if (i >= len) {
-			break;
-		}
-		
-		
+	while (i < len && ntokens < max_tokens) {		
 		// both the symbols defining the block comment
 		// and the content within it must be considerer
 		// a block comment
@@ -1617,7 +1605,18 @@ static size_t c_tokenize_line
 
 			first_token = 0;
 			continue;
-		}		
+		}
+
+		// ignore whitespaces
+		while (i < len && u32_isspace(line[i])) {
+			i++;
+		}
+		
+		
+		// EOF
+		if (i >= len) {
+			break;
+		}	
 
 		//   comment //
 		if (i + 1 < len &&

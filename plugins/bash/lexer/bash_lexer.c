@@ -679,7 +679,10 @@ static void handle_multiline_lexer_state
 	size_t begin = *i;
 
 	while (*i < len) {
-		if (line[*i] == '\\') {
+		// single-quoted Bash strings are literal: 
+		// backslashes and dollar signs
+		// have no special meaning inside them
+		if (hl == HL_STRING && line[*i] == '\\') {
 			size_t n = bash_escape_length(
 				line + *i,
 				len - *i
@@ -709,7 +712,7 @@ static void handle_multiline_lexer_state
 			continue;
 		}
 
-		if (line[*i] == '$') {
+		if (hl == HL_STRING && line[*i] == '$') {
 			if (begin != *i) {
 				tokens[(*ntokens)++] = (struct token) {
 					hl,
@@ -804,14 +807,6 @@ static size_t bash_tokenize_line
 	int state_has_changed = 0;
 
 	while (i < len && ntokens < max_tokens) {
-		while (i < len && u32_isspace(line[i])) {
-			i++;
-		}
-
-		if (i >= len) {
-			break;
-		}
-
 		if (bash->state == BASH_LEX_STRING ||
 			(!state_has_changed && state_in == LEX_STATE_STRING))
 		{
@@ -843,11 +838,19 @@ static size_t bash_tokenize_line
 				&i,
 				tokens,
 				&ntokens,
-				HL_STRING,
+				HL_CHAR,
 				state_out
 			);
 
 			continue;
+		}
+
+		while (i < len && u32_isspace(line[i])) {
+			i++;
+		}
+
+		if (i >= len) {
+			break;
 		}
 
 		//   comment //

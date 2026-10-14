@@ -11,5 +11,20 @@ source codes of lexers
 
 14/10/26
 
-BUGFIX: HL_COMMENT and empty lines were not being
-considered in editor_find_actual_block and aux functions
+BUGFIX: editor_find_actual_block: HL_COMMENT and empty lines were
+not being considered in editor_find_actual_block and aux functions
+
+BUGFIX: bash: multiline single-quoted strings in bash being handled
+incorrectly (propagatin HL_STRING instead of HL_CHAR)
+
+BUGFIX: bash: i discovered that $, which is evaluated within a string,
+only has meaning inside double quotes (single-quoted strings
+are literal strings)
+
+BUGFIX: bash and c: the whitespace skipping in the bash and C plugins
+is now placed after the check for whether state propagation
+is required. in this case, the whitespace literraly belongs
+to the content (of the string or comment). this change
+is merely logical; in practice, it makes no difference,
+because the render doesn't care about the lexer's state
+when it encounters a whitespace character
