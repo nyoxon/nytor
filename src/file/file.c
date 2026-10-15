@@ -558,6 +558,10 @@ void file_convert_spaces_to_tabs
 )
 {
 	size_t tab_size = file->tab_size;
+	
+	if (tab_size == 0) {
+		return;
+	}
 
 	u32string tab = u32string_from("\t");
 
@@ -615,13 +619,16 @@ void file_convert_spaces_to_tabs
 
 	file->dirty = 1;
 	file->has_dirty_line = 1;
-	file->use_spaces = 0;
 }
 
 
 // convert all tabs
 void file_convert_tabs_to_spaces(File* file) {
 	size_t tab_size = file->tab_size;
+	
+	if (tab_size == 0) {
+		return;
+	}
 
 	u32string spaces = u32string_new();
 
@@ -643,7 +650,7 @@ void file_convert_tabs_to_spaces(File* file) {
 					file_set_line_dirty(file, i);
 					first = 0;
 				}
-
+				
 				size_t quant = tab_size - (screen_x % tab_size);
 
 				u32string_remove_range(
@@ -660,12 +667,13 @@ void file_convert_tabs_to_spaces(File* file) {
 				);
 
 				screen_x += quant;
+				j += quant - 1;
 			}
 
 			else {
 				size_t width = char_screen_width(
 					c,
-					j,
+					screen_x,
 					tab_size
 				);
 
@@ -680,7 +688,6 @@ void file_convert_tabs_to_spaces(File* file) {
 
 	file->dirty = 1;
 	file->has_dirty_line = 1;
-	file->use_spaces = 1;
 }
 
 

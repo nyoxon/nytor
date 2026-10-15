@@ -2,12 +2,25 @@
 
 # version: 1.2
 
+
+--- INCOMING ---
+
+I'm thinking about integrating Lua into the editor's
+plugin system. I'm still looking into it, specifically
+the Lua language itself	and the API, but i believe
+it would be an interesting thing to do; not out of
+necessity, since writing plugins in C would also be
+completely obvious and natural, but rather for the sake
+of a challenge. Anyway, the lexer plugins still must
+be written in C
+
 13/10/26
 
 ADDED: Lua lexer
 
 ADDED: some useful information at the beginning of 
 source codes of lexers
+
 
 14/10/26
 
@@ -28,3 +41,12 @@ to the content (of the string or comment). this change
 is merely logical; in practice, it makes no difference,
 because the render doesn't care about the lexer's state
 when it encounters a whitespace character
+
+
+15/10/26
+
+CHANGE: `set indent` commands now don't change the state
+of `use_spaces` option/internal value
+
+BUGFIX: `set indent tabs` had an error and did not perform
+the conversion correctly

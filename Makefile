@@ -5,9 +5,12 @@ DEB_PATH = $(PACKAGE)_$(VERSION)_amd64.deb
 
 CC      := gcc
 
-CFLAGS  := -O2 -Wall -Wextra -Wpedantic -g -MMD -MP
+CFLAGS  := -O2 -Wall -Wextra -Wpedantic -MMD -MP
 CFLAGS += -DNYTOR_VERSION=\"$(VERSION)\" -std=c17 -D_GNU_SOURCE 
-CFLAGS_DEBUG := -fsanitize=address,undefined -g
+CFLAGS_DEBUG := -O0 -Wall -Wextra -Wpedantic -MMD -MP 
+CFLAGS_DEBUG += -fsanitize=address,undefined -g
+CFLAGS_DEBUG += -DNYTOR_VERSION=\"$(VERSION)\" -std=c17 
+CFLAGS_DEBUG += -D_GNU_SOURCE
 CPPFLAGS := -Isrc -Iinclude
 
 LDFLAGS := -lm
@@ -62,7 +65,7 @@ $(TARGET_DEBUG): $(OBJS_DEBUG)
 
 $(OBJ_DIR_DEBUG)/%.o: $(SRC_DIR)/%.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(CFLAGS_DEBUG) -c $< -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS_DEBUG) -c $< -o $@
 
 plugins: $(PLUGINS)
 
