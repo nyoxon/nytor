@@ -48,5 +48,5 @@ when it encounters a whitespace character
 CHANGE: `set indent` commands now don't change the state
 of `use_spaces` option/internal value
 
-BUGFIX: `set indent tabs` had an error and did not perform
+BUGFIX: `set indent spaces` had an error and did not perform
 the conversion correctly
