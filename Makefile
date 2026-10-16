@@ -5,20 +5,35 @@ DEB_PATH = $(PACKAGE)_$(VERSION)_amd64.deb
 
 CC      := gcc
 
+
+# normal executable
 CFLAGS  := -O2 -Wall -Wextra -Wpedantic -MMD -MP
-CFLAGS += -DNYTOR_VERSION=\"$(VERSION)\" -std=c17 -D_GNU_SOURCE 
+CFLAGS += -DNYTOR_VERSION=\"$(VERSION)\" -std=c17 -D_GNU_SOURCE
+
+
+# GDB nerds
 CFLAGS_DEBUG := -O0 -Wall -Wextra -Wpedantic -MMD -MP 
-CFLAGS_DEBUG += -fsanitize=address,undefined -g
+CFLAGS_DEBUG += -g3
 CFLAGS_DEBUG += -DNYTOR_VERSION=\"$(VERSION)\" -std=c17 
 CFLAGS_DEBUG += -D_GNU_SOURCE
+
+
+# no time for GDB
+CFLAGS_SANITIZE := -O0 -Wall -Wextra -Wpedantic -MMD -MP
+CFLAGS_SANITIZE += -fsanitize=address,undefined
+CFLAGS_SANITIZE += -DNYTOR_VERSION=\"$(VERSION)\" -std=c17
+CFLAGS_SANITIZE += -D_GNU_SOURCE
+
+
 CPPFLAGS := -Isrc -Iinclude
 
 LDFLAGS := -lm
-LDFLAGS_DEBUG := -fsanitize=address,undefined
+LDFLAGS_SANITIZE := -fsanitize=address,undefined
 
 SRC_DIR := src
 OBJ_DIR := build/obj
-OBJ_DIR_DEBUG := build/release
+OBJ_DIR_DEBUG := build/debug
+OBJ_DIR_SANITIZE := build/sanitize
 BIN_DIR := build
 
 PLUGIN_SRC_DIR := plugins
@@ -29,13 +44,17 @@ PLUGINS := $(patsubst $(PLUGIN_SRC_DIR)/%.c,$(PLUGIN_BUILD_DIR)/%.so,$(PLUGIN_SR
 
 TARGET  := nyt
 TARGET_DEBUG := nyt_debug
+TARGET_SANITIZE := nyt_sanitize
 
 SRCS := $(shell find $(SRC_DIR) -name '*.c')
 
 OBJS := $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SRCS))
 OBJS_DEBUG := $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR_DEBUG)/%.o,$(SRCS))
+OBJS_SANITIZE := $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR_SANITIZE)/%.o,$(SRCS))
+
 DEPS := $(OBJS:.o=.d)
 DEPS_DEBUG := $(OBJS_DEBUG:.o=.d)
+DEPS_SANITIZE := $(OBJS_SANITIZE:.o=.d)
 
 PREFIX ?= /usr/local
 BINDIR = $(PREFIX)/bin
@@ -61,11 +80,21 @@ debug: $(TARGET_DEBUG)
 
 $(TARGET_DEBUG): $(OBJS_DEBUG)
 	@mkdir -p $(BIN_DIR)
-	$(CC) $(CPPFLAGS) $(OBJS_DEBUG) -o $@ $(LDFLAGS) $(LDFLAGS_DEBUG)
+	$(CC) $(CPPFLAGS) $(OBJS_DEBUG) -o $@ $(LDFLAGS)
 
 $(OBJ_DIR_DEBUG)/%.o: $(SRC_DIR)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS_DEBUG) -c $< -o $@
+
+sanitize: $(TARGET_SANITIZE)
+
+$(TARGET_SANITIZE): $(OBJS_SANITIZE)
+	@mkdir -p $(BIN_DIR)
+	$(CC) $(CPPFLAGS) $(OBJS_SANITIZE) -o $@ $(LDFLAGS) $(LDFLAGS_SANITIZE)
+
+$(OBJ_DIR_SANITIZE)/%.o: $(SRC_DIR)/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CPPFLAGS) $(CFLAGS_SANITIZE) -c $< -o $@
 
 plugins: $(PLUGINS)
 
@@ -113,9 +142,10 @@ deb: $(TARGET)
 	dpkg-deb --build --root-owner-group $(PACKAGE_DIR) $(PACKAGE)_$(VERSION)_amd64.deb
 
 clean:
-	rm -rf $(BIN_DIR) $(TARGET) $(TARGET_DEBUG) $(PACKAGE_DIR) $(DEB_PATH) debug.ny
+	rm -rf $(BIN_DIR) $(TARGET) $(TARGET_DEBUG) $(TARGET_SANITIZE) $(PACKAGE_DIR) $(DEB_PATH) debug.ny
 
 -include $(DEPS)
 -include $(DEPS_DEBUG)
+-include $(DEPS_SANITIZE)
 
 .PHONY: all clean

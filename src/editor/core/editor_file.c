@@ -28,7 +28,7 @@ static ssize_t check_has_reserved_filename
 EditorFile editor_file_prototype(const EditorFileOptions* options) {
 	assert(options != NULL);
 
-	EditorFile ef;
+	EditorFile ef = {0};
 
 	ef.type = EDITOR_FILE_PROTOTYPE;
 	ef.proto_data = (EditorFilePrototypeData) { *options };
@@ -509,8 +509,7 @@ void editor_file_sync
 	ef->externally_moved_from = 0;
 	ef->externally_deleted = 0;
 	ef->externally_attrib_changed = 0;
-
-	ef->new_file = 0;
+	
 	ef->internal = 0;
 }
 
