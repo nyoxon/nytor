@@ -50,3 +50,8 @@ of `use_spaces` option/internal value
 
 BUGFIX: `set indent spaces` had an error and did not perform
 the conversion correctly
+
+
+16/10/26
+
+ADDED: Rust lexer

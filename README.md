@@ -27,7 +27,8 @@ Currently supported:
 * bash
 * Make
 * Lua
-* Gdscript (early dev)
+* Rust
+* GDScript (early dev)
 
 ### Autocomplete
 
