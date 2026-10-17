@@ -10,6 +10,7 @@
 
 #include "editor/core/cmd.h"
 #include "editor/core/action.h"
+#include "plugins/lua_plugin.h"
 #include "util/types/u32string.h"
 #include "util/files.h"
 #include "window/render.h"
@@ -1461,6 +1462,26 @@ const cmd sync_cmd = {
 		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨"
 };
 
+
+// --- LUA ---
+const cmd lua = {
+	.name = "lua",
+	.description =
+		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨\n"
+		"Name: lua\n"
+		"------------------------------------------------------------------\n"
+		"Args: path_to_script (required)\n"
+		"------------------------------------------------------------------\n"		
+		"Action: call a Lua script\n"
+		"------------------------------------------------------------------\n"
+		"More:\n\n"
+		" --- API ---\n\n"
+		"todo\n"
+		"------------------------------------------------------------------\n"
+		"Errors: loading the script or executing the script\n"
+		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨"
+};
+
 // --- HELP ---
 const cmd help = {
 	.name = "help",
@@ -1506,11 +1527,13 @@ const cmd help = {
 		"-    show\n"
 		"-    suspend\n"
 		"-    sync\n"
+		"-    lua\n"
 		"\nDon't forget to close this window.",
 };
 
 const cmd COMMANDS[] = {
 	help,
+	lua,
 	quit,
 	quits,
 	quit_forced,
@@ -1784,6 +1807,11 @@ static void handle_help(Editor* editor, char* words[], size_t n) {
 			sprintf(buf, "%s man", sync_cmd.name);
 		}
 
+		else if (strcmp(words[1], lua.name) == 0) {
+			cb.text = u32string_from(lua.description);
+			sprintf(buf, "%s man", lua.name);
+		}
+
 		else {
 			prompt_init(
 				&editor->status_bar,
@@ -1969,6 +1997,35 @@ int editor_handle_cmd
 		}
 
 		words[n++] = tok;
+	}
+
+	/// --- LUA ---
+	if (n > 0 && strcmp(words[0], "lua") == 0) {
+		if (n < 2) {
+			prompt_init(
+				&editor->status_bar, 
+				PROMPT_INSUFFICIENT_ARGS, 
+				PT_INFO);
+		} 
+		
+		else {
+			char error[512];
+			
+			if (lua_plugin_run(
+					editor, 
+					words[1], 
+					error, 
+					sizeof(error)) < 0)
+			{
+				prompt_init(
+					&editor->status_bar, 
+					error, 
+					PT_INFO
+				);
+			}
+		}
+		
+		goto cleanup;
 	}
 
 
@@ -3697,6 +3754,15 @@ int editor_handle_cmd
 	if (strcmp(words[0], help.name) == 0) {
 		handle_help(editor, words, n);
 
+		goto cleanup;
+	}
+
+	/// --- LUA PLUGIN COMMAND ---
+	char plugin_path[PATH_MAX_LENGTH];
+	if (lua_plugin_find(words[0], plugin_path, sizeof(plugin_path))) {
+		char error[512];
+		if (lua_plugin_run(editor, plugin_path, error, sizeof(error)) < 0)
+			prompt_init(&editor->status_bar, error, PT_INFO);
 		goto cleanup;
 	}
 	

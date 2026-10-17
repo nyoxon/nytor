@@ -27,7 +27,7 @@ CFLAGS_SANITIZE += -D_GNU_SOURCE
 
 CPPFLAGS := -Isrc -Iinclude
 
-LDFLAGS := -lm
+LDFLAGS := -lm -ldl
 LDFLAGS_SANITIZE := -fsanitize=address,undefined
 
 SRC_DIR := src
@@ -36,8 +36,8 @@ OBJ_DIR_DEBUG := build/debug
 OBJ_DIR_SANITIZE := build/sanitize
 BIN_DIR := build
 
-PLUGIN_SRC_DIR := plugins
-PLUGIN_BUILD_DIR := build/plugins
+PLUGIN_SRC_DIR := plugins/lexers
+PLUGIN_BUILD_DIR := build/plugins/lexers
 
 PLUGIN_SRCS := $(shell find $(PLUGIN_SRC_DIR) -name '*.c')
 PLUGINS := $(patsubst $(PLUGIN_SRC_DIR)/%.c,$(PLUGIN_BUILD_DIR)/%.so,$(PLUGIN_SRCS))

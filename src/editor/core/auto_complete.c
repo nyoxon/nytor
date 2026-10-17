@@ -10,6 +10,7 @@
 #include "editor/core/cmd.h" 
 #include "editor/core/auto_complete.h" 
 #include "editor/core/action.h"
+#include "plugins/lua_plugin.h"
 #include "util/files.h"
 #include "util/types/hash.h"
 
@@ -46,6 +47,9 @@ static void get_cmd_candidates(Vector* candidates, const u32string* string) {
 			vector_push(candidates, &candidate);
 		}
 	}
+	
+	// new
+	lua_plugin_candidates(candidates, string);
 }
 
 static void get_file_and_dirname

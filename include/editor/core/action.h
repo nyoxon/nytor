@@ -4,10 +4,6 @@
 #include "editor/editor.h"
 #include "editor/core/history.h"
 
-
-int is_alnum(uint32_t c);
-int is_word_char(uint32_t c);
-
 void editor_open_terminal(Editor* editor);
 
 void editor_update_size(Editor* editor);
