@@ -1720,6 +1720,8 @@ static size_t c_tokenize_line
 				};
 
 				c->state = C_LEX_PREPROCESSOR;
+				
+				break;
 			}
 
 			else {

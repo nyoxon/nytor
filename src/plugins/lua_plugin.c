@@ -1440,7 +1440,7 @@ int lua_plugin_run
 		snprintf(
 			error, 
 			error_size, 
-			"Lua runtime unavailable (install Lua 5.2+)"
+			"Lua runtime unavailable"
 		);
 		
 		return -1;

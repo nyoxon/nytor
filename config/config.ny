@@ -125,7 +125,8 @@ use_autocomplete = false
 
 # the keybind must be formed by a combination of modifiers
 # (ctrl, alt, shift) plus a non-escape ascii character or
-# an arrow direction (right, down, left, up).
+# an arrow direction (right, down, left, up) or 
+# simply set to 'none' to unbind it from any key.
 # there are no support for keys like HOME, INSERT etc or
 # F1, F2, FN
 
@@ -196,10 +197,10 @@ use_autocomplete = false
 # there is no corresponding command for any of the action keybinds
 # that use arrow directions above.
 
-save = "ctrl+s"
-quit = "ctrl+q"
-find = "ctrl+f"
 
+# examples:
+# save = "none"
+# quit = "ctrl + g"
 
 
 
@@ -243,10 +244,7 @@ find = "ctrl+f"
 # you can change the language plugin the editor is using
 # for the actual file, at runtime, using the 'set' command
 
-# see 'howto' command in order to learn how to create your
-# own language plugin
 
-language = c
-language = make
-language = lua
-language = bash
+# examples:
+# language = c
+# language = lua

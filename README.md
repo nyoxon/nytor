@@ -8,10 +8,18 @@
 minimal and somehow extensible, while providing a modern editing experience for 
 linux only (for now).
 
-The idea behind it was to create a terminal-based editor like vim or hex
+The idea behind it was to create a terminal-based editor 
+like vim or hex (which i don't like because they are horrible to use)
 but one that includes some of extra features, such as those found in editors
-like subl; and above all, be an editor I would use on a daily basis.
+like sublime text (which i don't like to getting pop-ups asking me to buy it); 
+and above all, be an editor I would use on a daily basis.
 
+
+## Why use nytor
+
+Actually, there's no reason at all, given that any mainstream
+editor does what `nytor` does, and likely does it better or
+more efficiently.
 
 ## Features
 
@@ -28,7 +36,11 @@ Currently supported:
 * Make
 * Lua
 * Rust
-* GDScript (early dev)
+* Assembly x86
+* GDScript
+
+There is a poorly documented API ([here](include/plugins/language_syntax.h))
+that someone could use in order to create their own lexer.
 
 ### Autocomplete
 
@@ -77,72 +89,46 @@ where you can enter specific commands.
 
 You can open it by pressing Ctrl + N. Try tipping the `help` command.
 
-### Experimental Lua plugins
+### Lua plugins/scripts (Experimental)
 
-This branch adds optional Lua command plugins. Install a script as
-`plugin_name.lua` in one of the directories below, then invoke it by typing
-`plugin_name` at the prompt (Ctrl + N). Lua plugins share the prompt's Tab
-autocomplete with built-in commands. Built-in commands take precedence if a
-plugin has the same name. The editor dynamically loads Lua 5.2 or newer when a
-Lua plugin is run; Lua is not needed to build or run the editor when no Lua
-plugin is run. The `lua path/to/plugin.lua` command is also available for
-running a script directly.
+Programs written in Lua can be called directy from the editor.
+There is no divine reason for using Lua (rather than, say, C,
+which is already used for a large portion of the prompt commands
+and lexer plugins); it's simply because i've never used two
+languages in a single project and would like to give it
+a try.
 
-Lua command plugins can also be installed in `~/.config/nytor/plugins/`,
-`/usr/local/share/nytor/plugins/`, or `/usr/share/nytor/plugins/`. The editor
-uses the first of these directories that exists and searches only that
-directory. For example, if `~/.config/nytor/plugins/` exists,
-`/usr/local/share/nytor/plugins/` and `/usr/share/nytor/plugins/` are ignored,
-even when a script is missing from the user directory. Prompt autocomplete
-(Tab) lists Lua plugins from the selected directory.
+Actually, it would be interesting (not necessary) to be able
+to extend the editor's functionaly without having to recompile
+it every single time, especially since i don't intend to
+create a billion commands for the prompt (there are already
+a plenty) or turn my editor into a monster like C++
 
-The script receives a global `nyt` table. Cursor and line coordinates are
-one-based; `terminal_size()` returns columns then rows. File indices are also
-one-based. Operations returning a status follow the result conventions of the
-underlying editor function.
+Naturally, there's an API of defined functions ([here](src/plugins/lua_plugin.c))
+that a Lua script must use to communicate with the editor's
+internal structures.
 
-```lua
-local x, y = nyt.cursor()       -- one-based cursor column and line
-nyt.set_cursor(x, y)
-nyt.move_cursor("right")        -- left, right, up, down, line_start, line_end
-local current = nyt.line(y)     -- UTF-8 text of a one-based line
-local length = nyt.line_length(y) -- character count, not UTF-8 byte count
-local count = nyt.line_count()
-local prompt = nyt.prompt()     -- current prompt input
-local columns, rows = nyt.terminal_size()
+There are two ways to call a script:
 
-nyt.insert("-- inserted at the cursor")
-nyt.insert_newline()
-nyt.set_prompt("Lua plugin ran")
-```
+- Using the `lua` command inside the prompt.
+- Adding it to `nytor`/plugins/ directory and calling it
+by its name in the same way that you would call a builtin
+editor command (autocomplete will even work for it)
 
-The rest of the API includes terminal control (`open_terminal`, `suspend`,
-`update_size`, `cursor_update`), file management (`file_count`, `current_file`, `change_file`,
-`next_file`, `prev_file`, `new_file`, `internal_file`, `open_file`,
-`close_file`, `save_file`), selection and clipboard (`start_selection`,
-`select_range`, `select_line`, `select_all`, `select_word`,
-`complete_selection`, `clear_selection`, `copy`, `paste`), editing
-(`delete_left`, `delete_right`, `delete_selection`, `indent`, `unindent`,
-`comment`, `move_line_up`, `move_line_down`), navigation (`scroll(direction)`,
-`find`, `replace`, `is_word_char(codepoint)`) and history (`undo`, `redo`).
+Since this is an experimental feature, you don't even
+need to have the Lua interpreter installed on your system,
+as it's loaded dynamically into the editor process's memory.
+See some examples of scripts [here](plugins)
 
-`scroll` accepts `up`, `down`, `left`, `right`, `page_up` or `page_down`.
-`select_range(start_column, start_line, end_column, end_line)` uses one-based
-coordinates. `close_file(index, true)` forces a close; `new_file(true)` creates
-a read-only file; `open_file(path, true)` opens read-only. `replace(pattern,
-text, true)` limits replacement to the current selection.
+#### Poins to consider
 
-The Lua standard libraries are available to plugins. This API is experimental
-and currently runs a script on demand rather than registering persistent hooks.
-Small scripts for trying the API live at `plugins/test_api.lua`,
-`plugins/test_cursor.lua`, `plugins/test_insert.lua`, and
-`plugins/test_selection.lua`. The insert example changes the current buffer;
-the selection example updates the clipboard.
+- Must use Lua 5.2 or newer.
+- Dynamically loading the interpreter introduces a tiny
+but noticeable delay immediately after a script is called.
+- This is an experimental feature, which means that
+absolutely everything about it could change, many erros
+could exist, or even be removed in later versions.
 
-Useful example commands in `plugins/` include `longest_line` (move to the end
-of the first longest line), `select_longest_line`, `file_stats`, and
-`trim_trailing_whitespace`. The last command edits the current buffer by
-removing trailing spaces and tabs.
 
 ### Other features
 
@@ -246,15 +232,33 @@ There is also a .deb package that installs the program (check Releases section).
 
 ## Default config file, themes and plugins
 
+The `nytor` directory, which houses the config file, themes,
+plugins, etc, must be located in one of these three directories
+(in fact, the editor checks for the directory's existence in
+precisely this order):
+
+- $HOME/.config/
+- /usr/local/share/
+- /usr/share/
+
+More specifically, the editor will search for the `nytor` directory
+following the order above and will use the first one that exists.
+This means there's no such thing as "scanning all directories" for
+example, to find plugins or theemes, but rather only "scanning
+a single directory". If HOME/.config/nytor exists, any plugins,
+themes, or config file that might otherwise be found in
+other directories will be completely ignored. The reason behind
+this is that, ideally, I would prefer for the directory
+to exist only within $HOME. However, since i also want to use
+`make install` and distribute a `.deb` package, both of which
+require privileged permissions, it would be a bit odd
+to create directories within the user space. If you don't like
+this, feel free to create you own version of the editor (see [license](LICENSE)).
+
 When using `make install` to install the program, the default
 configuration files will be located in `/usr/local/share/nytor/`.
 If installed via the .deb package, they will be in
-`/usr/share/nytor/`. In either case, consider moving this folder
-to `~/.config/`, which is entirely optional (though, `~/.config/`
-is the first location checked for configuration files and is, by
-design, the standard place for them. Since it's optional, the
-program will still be able to find the default settings if you
-decide not to move the installed folder to `~/.config`).
+`/usr/share/nytor/`.
 
 ### Uninstalling
 
