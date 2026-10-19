@@ -1,5 +1,10 @@
 // Plugin: x86 assembly syntax highlighting lexer
 // Author: nyoxon
+// Created in version: 1.2.1
+// Last revision in version: 1.2.1
+
+// This plugin handles both Intel and AT&T (GNU Assembly)
+// syntax simultaneously.
 
 #include <ctype.h>
 #include <stdint.h>
@@ -353,6 +358,7 @@ static int word_equals
 		if (begin + i >= end || line[begin + i] != (unsigned char) word[i]) {
 			return 0;
 		}
+		
 		i++;
 	}
 	
@@ -372,6 +378,50 @@ static int word_in_list
 		if (word_equals(line, begin, end, words[i])) return 1;
 	}
 	
+	return 0;
+}
+
+static int is_register
+(
+	const uint32_t* line,
+	size_t begin,
+	size_t end
+)
+{
+	if (begin < end && line[begin] == U'%') begin++;
+	
+	return word_in_list(
+		line, 
+		begin, 
+		end, 
+		registers, 
+		ARRAY_SIZE(registers)
+	);
+}
+
+static int is_instruction
+(
+	const uint32_t* line,
+	size_t begin,
+	size_t end
+)
+{
+	if (word_in_list(line, begin, end, instructions, ARRAY_SIZE(instructions))) {
+		return 1;
+	}
+
+	// GNU AT&T syntax appends a size suffix to many instruction names:
+	// b (byte), w (word), l (long), and q (quadword).
+	if (end - begin > 1) {
+		uint32_t suffix = line[end - 1];
+		if (suffix == U'b' || suffix == U'w' ||
+			suffix == U'l' || suffix == U'q')
+		{
+			return word_in_list(line, begin, end - 1,
+				instructions, ARRAY_SIZE(instructions));
+		}
+	}
+
 	return 0;
 }
 
@@ -411,6 +461,7 @@ static size_t scan_number(const uint32_t* line, size_t len, size_t i) {
 		while (p < len && (is_hex(line[p]) || line[p] == U'_')) p++;
 		return p;
 	}
+	
 	while (p < len && ((line[p] >= U'0' && line[p] <= U'9') ||
 		line[p] == U'_' || line[p] == U'h' || line[p] == U'H' ||
 		(line[p] >= U'a' && line[p] <= U'f') ||
@@ -453,6 +504,13 @@ static size_t asm_x86_tokenize_line
 			break;
 		}
 
+		// '$' marks an immediate operand in GNU AT&T syntax.
+		if (line[i] == U'$') {
+			emit(tokens, &count, max_tokens, HL_OPERATOR, i, i + 1);
+			i++;
+			continue;
+		}
+
 		if (line[i] == U'"' || line[i] == U'\'') {
 			uint32_t quote = line[i];
 			size_t begin = i++;
@@ -485,15 +543,14 @@ static size_t asm_x86_tokenize_line
 
 			enum highlight highlight = HL_NORMAL;
 			
-			if (line[i - 1] == U':' && i == begin + 1) {
+			if (i < len && line[i] == U':') {
 				highlight = HL_FUNCTION;
-			} else if (i < len && line[i] == U':') {
-				highlight = HL_FUNCTION;
-			} else if (line[begin] == U'.' || line[begin] == U'%') {
+			} else if (line[begin] == U'.' &&
+				!(i - begin >= 2 && line[begin + 1] == U'L')) {
 				highlight = HL_PREPROCESSOR;
-			} else if (word_in_list(line, begin, i, registers, ARRAY_SIZE(registers))) {
+			} else if (is_register(line, begin, i)) {
 				highlight = HL_TYPE;
-			} else if (word_in_list(line, begin, i, instructions, ARRAY_SIZE(instructions))) {
+			} else if (is_instruction(line, begin, i)) {
 				highlight = HL_KEYWORD;
 			} else if (word_in_list(line, begin, i, directives, ARRAY_SIZE(directives))) {
 				highlight = HL_SPECIFIER;

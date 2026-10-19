@@ -40,3 +40,27 @@ _start:
 	ret
 
 # GNU assembler style comment marker is recognized as a comment too.
+
+# GNU assembler AT&T syntax examples.
+.section .rodata
+.Latt_message:
+	.asciz "GNU assembler with AT&T operands"
+
+.section .text
+.globl att_demo
+.type att_demo, @function
+att_demo:
+	pushq %rbp
+	movq %rsp, %rbp
+	movl $42, %eax
+	addl $8, %eax
+	leaq .Latt_message(%rip), %rdi
+	cmpq $0, %rax
+	je .Latt_done
+	popq %rbp
+	ret
+.Latt_done:
+	xorl %eax, %eax
+	popq %rbp
+	ret
+.size att_demo, .-att_demo
