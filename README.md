@@ -290,14 +290,6 @@ or
 man nyt
 ```
 
-## Configuration
-
-Configuration files are stored in:
-
-```text
-~/.config/nytor/
-```
-
 ## Limitations
 
 - CRLF are normalized to LF
