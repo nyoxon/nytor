@@ -300,16 +300,18 @@ Configuration files are stored in:
 
 ## Limitations
 
-The editor assumes it is dealing with seekable files (ex: regular files).
+- CRLF are normalized to LF
 
-There is no hex mode.
+- The editor assumes it is dealing with seekable files (ex: regular files).
 
-There is no tilde expansion.
+- There is no hex mode.
 
-The program currently doesn't handle huge files very well: that is,
+- There is no tilde expansion (inside the prompt).
+
+- The program currently doesn't handle huge files very well: that is,
 it will use a lot of memory if that happens.
 
-To avoid headaches early in the project, I stored Unicode characters
+- To avoid headaches early in the project, I stored Unicode characters
 as fixed 4-byte values. The problem with this is that if the editor is
 actually used for programming, it's almost impossible to find a non-ASCII
 character, meaning some memory would be wasted.
@@ -317,7 +319,7 @@ I don't necessarily think it's a problem, but i do plan to change the
 storage strategy someday (and consequently, the strategy for access,
 removal, inserting, (..........................................)
 
-The autocomplete algorithm has complexity O(`size of file`).
+- The autocomplete algorithm has complexity O(`size of file`).
 
 ## Project status
 

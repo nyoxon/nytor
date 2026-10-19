@@ -427,6 +427,18 @@ static void split_lines
 		}
 	}
 
+	// a final newline terminates the last line and 
+	// leaves an empty line after
+	// it. Keeping that line is necessary for 
+	// file_save() to write the newline
+	// back (it writes separators between stored lines).
+	if (size > 0 && data[size - 1] == '\n') {
+		u32string text = u32string_new();
+		Line line = line_with_text(text);
+		
+		file_push(file, &line);
+	}
+
 	if (size > 0) {
 		file->has_dirty_line = 1;
 	}

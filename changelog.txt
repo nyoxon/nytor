@@ -1,3 +1,9 @@
 # DATE: dd/mm/yy
 
 # version: 1.2.1
+
+
+19/10/26
+
+BUGFIX: the editor was not preserving a potential line
+that contained a single newline character.
