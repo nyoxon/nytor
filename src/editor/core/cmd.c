@@ -1284,12 +1284,12 @@ const cmd terminal = {
 };
 
 
-// --- SYSTEM ---
-const cmd system_cmd = { // man 3 system
-	.name = "system",
+// --- SHELL ---
+const cmd shell = { // man 3 system
+	.name = "shell",
 	.description = 
 		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨\n"
-		"Name: system\n"
+		"Name: shell\n"
 		"------------------------------------------------------------------\n"
 		"Args (required):\n"
 		" -	command args \n"
@@ -1298,16 +1298,17 @@ const cmd system_cmd = { // man 3 system
 		"------------------------------------------------------------------\n"
 		"More: \n\n"
 		" --- BEHAVIOR AND LIMITATIONS ---\n\n"
-		"(1) You don't need to pass the command or arguments in quotes\n\n"
-		"(2) The output of the called program will be completely ignored, and\n"
-		"the only thing displayed will be the exit code. If you need to see\n"
-		"command output, consider the 'terminal' command.\n\n"
+		"(1) You don't need to pass the command or arguments in quotes"
+		"in a similar way using `find` or `replace` cmds because these"
+		"args will be passed directly to the shell.\n\n"
+		"(2) A new file containing the program's stdout + stderr will"
+		"be created.\n\n"
 		" --- TERMS OF USE ---\n\n"
 		"By using this command, you agree not to call an interactive or\n"
 		"blocking program. Violating this term will result in great sadness\n"
 		"and annoyance.\n\n"
 		" --- EXAMPLES ---\n\n"
-		" > system gcc -Wall main.c\n"
+		" > shell gcc -Wall main.c\n"
 		"------------------------------------------------------------------\n"
 		"Errors: any error returned or possible from the called program. \n"
 		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨",
@@ -1523,7 +1524,7 @@ const cmd help = {
 		"-    redo\n"
 		"-    themes\n"
 		"-    terminal\n"
-		"-    system\n"
+		"-    shell\n"
 		"-    show\n"
 		"-    suspend\n"
 		"-    sync\n"
@@ -1566,7 +1567,7 @@ const cmd COMMANDS[] = {
 	undo,
 	redo,
 	terminal,
-	system_cmd,
+	shell,
 	show,
 	files,
 	set,
@@ -1782,9 +1783,9 @@ static void handle_help(Editor* editor, char* words[], size_t n) {
 			sprintf(buf, "%s man", terminal.name);
 		}
 
-		else if (strcmp(words[1], system_cmd.name) == 0) {
-			cb.text = u32string_from(system_cmd.description);
-			sprintf(buf, "%s man", system_cmd.name);
+		else if (strcmp(words[1], shell.name) == 0) {
+			cb.text = u32string_from(shell.description);
+			sprintf(buf, "%s man", shell.name);
 		}
 
 		else if (strcmp(words[1], show.name) == 0) {
@@ -1916,7 +1917,7 @@ static int words_to_u8string
 }
 
 
-// SYSTEM helper
+// SHELL helper
 static void run_extern_command
 (
 	Editor* editor,
@@ -3426,8 +3427,8 @@ int editor_handle_cmd
 	}
 
 
-	/// --- SYSTEM ---
-	if (strcmp(words[0], system_cmd.name) == 0) {
+	/// --- SHELL ---
+	if (strcmp(words[0], shell.name) == 0) {
 		if (n == 1) {
 			prompt_init(
 				&editor->status_bar,
@@ -3449,14 +3450,42 @@ int editor_handle_cmd
 
 			goto cleanup;			
 		}
+		
+		Clipboard cb = clipboard_new();
 
 		run_extern_command(
 			editor,
 			command,
-			NULL
+			&cb
 		);
 
 		free(command);
+		
+		editor_create_new_file(editor, 0);
+
+		file_paste_clipboard(
+			&editor->actual_file->file,
+			&cb,
+			&editor->cursor,
+			&editor->result
+		);
+	
+		// editor_cursor_move(editor, POS_ZERO);
+		
+		editor->actual_file->file.dirty = 1;
+		// editor->actual_file->file.has_dirty_line = 0;
+		file_set_name(
+			&editor->actual_file->file,
+			"shell_output",
+			0
+		);
+		
+		editor->actual_file->new_file = 1;
+		editor->actual_file->internal = 0;
+		
+		editor_prompt_init(editor);
+		
+		clipboard_free(&cb);
 
 		goto cleanup;
 	}

@@ -526,7 +526,7 @@ int editor_create_internal_file
 	}
 
 	if (editor->debug_mode) {
-		log_write(&editor->log, "editor_cursor_update: SUCCESS");		
+		log_write(&editor->log, "editor_create_internal_file: SUCCESS");		
 	}
 
 	return EIE_OK;		

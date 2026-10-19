@@ -7,3 +7,7 @@
 
 BUGFIX: the editor was not preserving a potential last line
 of the file that contained a single newline character.
+
+CHANGE: the `system` command has been renamed to `shell`,
+and it now creates a new file containing the contents
+of the program being called.
