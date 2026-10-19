@@ -5,5 +5,5 @@
 
 19/10/26
 
-BUGFIX: the editor was not preserving a potential line
-that contained a single newline character.
+BUGFIX: the editor was not preserving a potential last line
+of the file that contained a single newline character.
