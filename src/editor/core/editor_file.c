@@ -1,4 +1,10 @@
+#ifdef __FreeBSD__
+#include <sys/event.h>
+#include <sys/time.h>
+#include <libgen.h>
+#else
 #include <sys/inotify.h>
+#endif
 #include <sys/stat.h>
 #include <stdio.h>
 #include <string.h>
@@ -52,7 +58,12 @@ int editor_file_open
 	size_t tab_size = options.default_tab_size;
 	int use_spaces = options.default_use_spaces;
 	int readonly = options.readonly;
-	int inotify_fd = options.inotify_fd;
+
+	ef->watch_descriptor = -1;
+	ef->watch_file_descriptor = -1;
+
+	int file_watch_fd = options.file_watch_fd;
+	ef->file_watch_fd = file_watch_fd;
 
 
 	/// --- FILE_OPEN ---
@@ -95,7 +106,7 @@ int editor_file_open
 		editor_file_set_watcher(
 			ef, 
 			path, 
-			inotify_fd);
+			file_watch_fd);
 
 		int exists = file_exists(path);
 
@@ -185,6 +196,10 @@ int editor_file_open
 void editor_file_free(EditorFile* ef) {
 	if (!ef || ef->type == EDITOR_FILE_PROTOTYPE) {
 		return;
+	}
+
+	if (ef->watch_descriptor >= 0 && ef->file_watch_fd >= 0) {
+		editor_file_del_watcher(ef, ef->file_watch_fd);
 	}
 
 	file_free(&ef->file);
@@ -327,13 +342,13 @@ void editor_file_set_watcher
 (
 	EditorFile* ef, 
 	const char* filename,
-	int inotify_fd
+	int file_watch_fd
 )
 {
-	// see editor_check_inotify() in src/editor/editor.c
+	// see editor_check_file_watch() in src/editor/editor.c
 	// for more information
 
-	if (!filename || inotify_fd < 0) {
+	if (!filename || file_watch_fd < 0) {
 		return;
 	}
 
@@ -341,10 +356,76 @@ void editor_file_set_watcher
 	// the editor may handle files that do not yet exist,
 	// and in that case, it's not possible to place a watcher
 	// on a non-existent file.
+#ifdef __FreeBSD__
+	struct kevent change;
+
+	if (ef->watch_descriptor < 0) {
+		char* absolute = absolute_parent_directory(filename);
+
+		if (!absolute) {
+			return;
+		} 
+
+		int dirfd = open(absolute, O_RDONLY | O_DIRECTORY);
+
+		free(absolute);
+
+		if (dirfd < 0)  {
+			return;
+		}
+
+		EV_SET(
+			&change, 
+			dirfd, 
+			EVFILT_VNODE, 
+			EV_ADD | EV_CLEAR,
+			NOTE_WRITE | NOTE_DELETE | NOTE_RENAME | NOTE_ATTRIB, 
+			0, 
+			NULL
+		);
+
+		if (kevent(file_watch_fd, &change, 1, NULL, 0, NULL) < 0) {
+			close(dirfd);
+
+			return;
+		}
+
+		ef->watch_descriptor = dirfd;
+	}
+
+	if (ef->watch_file_descriptor < 0) {
+		int filefd = open(filename, O_RDONLY);
+
+		if (filefd < 0) {
+			return;
+		}
+
+		EV_SET(
+			&change, 
+			filefd, 
+			EVFILT_VNODE, 
+			EV_ADD | EV_CLEAR,
+			NOTE_WRITE | 
+			NOTE_DELETE | 
+			NOTE_RENAME | 
+			NOTE_ATTRIB, 
+			0, 
+			NULL
+		);
+
+		if (kevent(file_watch_fd, &change, 1, NULL, 0, NULL) == 0) {
+			ef->watch_file_descriptor = filefd;
+		}
+
+		else {
+			close(filefd);
+		}
+	}
+#else
 	char* absolute = absolute_parent_directory(filename);
 
 	ef->watch_descriptor = inotify_add_watch(
-		inotify_fd,
+		file_watch_fd,
 		absolute,
 		IN_CREATE |			// a file with the same name was created
 		IN_MOVED_TO |		// someone did "mv something actual_file"
@@ -356,18 +437,49 @@ void editor_file_set_watcher
 	);
 
 	free(absolute);
+#endif
 }
 
-void editor_file_del_watcher(EditorFile* ef, int inotify_fd) {
-	if (ef->watch_descriptor < 0 || inotify_fd < 0) {
+void editor_file_del_watcher(EditorFile* ef, int file_watch_fd) {
+	if (ef->watch_descriptor < 0 || file_watch_fd < 0) {
 		return;
 	}
 
-	inotify_rm_watch(
-		inotify_fd,
-		ef->watch_descriptor
+#ifdef __FreeBSD__
+	struct kevent change;
+
+	EV_SET(
+		&change, 
+		ef->watch_descriptor, 
+		EVFILT_VNODE, 
+		EV_DELETE, 
+		0, 
+		0, 
+		NULL
 	);
 
+	kevent(file_watch_fd, &change, 1, NULL, 0, NULL);
+	close(ef->watch_descriptor);
+
+	if (ef->watch_file_descriptor >= 0) {
+		EV_SET(
+			&change, 
+			ef->watch_file_descriptor, 
+			EVFILT_VNODE, 
+			EV_DELETE,
+			0, 
+			0, 
+			NULL
+		);
+
+		kevent(file_watch_fd, &change, 1, NULL, 0, NULL);
+		close(ef->watch_file_descriptor);
+
+		ef->watch_file_descriptor = -1;
+	}
+#else
+	inotify_rm_watch(file_watch_fd, ef->watch_descriptor);
+#endif
 	ef->watch_descriptor = -1; // important
 }
 
@@ -390,6 +502,7 @@ void handle_file_modified(EditorFile* ef) {
 	}
 
 	if (st.st_mtim.tv_sec != ef->metadata.mtime.tv_sec ||
+		st.st_mtim.tv_nsec != ef->metadata.mtime.tv_nsec ||
 		st.st_size != ef->metadata.size ||
 		st.st_ino != ef->metadata.inode)
 	{
@@ -397,19 +510,27 @@ void handle_file_modified(EditorFile* ef) {
 	}
 }
 
-void handle_file_deleted(EditorFile* ef, int inotify_fd) {
+void handle_file_deleted(EditorFile* ef, int file_watch_fd) {
+#ifdef __FreeBSD__
+	(void) file_watch_fd;
+#endif
 	// dunno if removing the watcher here is the best approach
 
 	// given that a user, upon realizing the file has been
 	// deleted, might keep an internal file with the same name,
 	// it might be worth keeping the watcher alive and only
 	// deleting it if the user decides to close the file
-	editor_file_del_watcher(ef, inotify_fd);
+#ifndef __FreeBSD__
+	editor_file_del_watcher(ef, file_watch_fd);
+#endif
 
 	ef->externally_deleted = 1;
 }
 
-void handle_file_moved_from(EditorFile* ef, int inotify_fd) {
+void handle_file_moved_from(EditorFile* ef, int file_watch_fd) {
+#ifdef __FreeBSD__
+	(void) file_watch_fd;
+#endif
 	if (ef->readonly) {
 		return;
 	}
@@ -420,7 +541,9 @@ void handle_file_moved_from(EditorFile* ef, int inotify_fd) {
 	// moved, might keep an internal file with the same name,
 	// it might be worth keeping the watcher alive and only
 	// deleting it if the user decides to close the file
-	editor_file_del_watcher(ef, inotify_fd);
+#ifndef __FreeBSD__
+	editor_file_del_watcher(ef, file_watch_fd);
+#endif
 
 	ef->externally_moved_from = 1;
 }
@@ -435,7 +558,7 @@ void handle_file_moved_into(EditorFile* ef) {
 
 void handle_file_attrib_changed(EditorFile* ef) {
 	if (ef->readonly) {
-		int fd = open(ef->file.filename, O_RDONLY);
+		int fd = open(ef->file.path, O_RDONLY);
 
 		if (fd < 0) {
 			ef->externally_attrib_changed = 1;
@@ -445,7 +568,7 @@ void handle_file_attrib_changed(EditorFile* ef) {
 	}
 
 	else {
-		int fd = open(ef->file.filename, O_RDONLY);
+		int fd = open(ef->file.path, O_RDONLY);
 
 		if (fd < 0) {
 			ef->readonly = 1;
@@ -456,7 +579,7 @@ void handle_file_attrib_changed(EditorFile* ef) {
 
 		close(fd);
 
-		fd = open(ef->file.filename, O_WRONLY);
+		fd = open(ef->file.path, O_WRONLY);
 
 		if (fd < 0) {
 			ef->externally_attrib_changed = 1;
@@ -466,7 +589,7 @@ void handle_file_attrib_changed(EditorFile* ef) {
 	}
 }
 
-void handle_file_create(EditorFile* ef, int inotify_fd) {
+void handle_file_create(EditorFile* ef, int file_watch_fd) {
 	if (!ef->new_file) {
 		return;
 	}
@@ -474,7 +597,7 @@ void handle_file_create(EditorFile* ef, int inotify_fd) {
 	ef->externally_modified = 1;
 
 	if (ef->watch_descriptor < 0) {
-		editor_file_set_watcher(ef, ef->file.filename, inotify_fd);		
+		editor_file_set_watcher(ef, ef->file.path, file_watch_fd);
 	}
 }
 
@@ -589,47 +712,3 @@ end:
 
 	return 0;
 }
-
-// void editor_file_reload_words(EditorFile* ef) {
-// 	if (ef->type == EDITOR_FILE_PROTOTYPE || ef->readonly) {
-// 		return;
-// 	}
-
-// 	trie_free(&ef->words);
-
-// 	ef->words.root = trie_node_create();
-
-// 	IsWordChar is_word =
-// 		(ef->language && 
-// 			ef->language->rules &&
-// 			ef->language->rules->is_word_char)
-// 		? ef->language->rules->is_word_char
-// 		: is_utf_word_char;
-
-// 	for (size_t y = 0; y < file_num_lines(&ef->file); y++) {
-// 		const u32string* line = file_get_line_text(&ef->file, y);
-// 		size_t size = u32string_size(line);
-
-// 		size_t start = 0;
-
-// 		for (size_t x = 0; x < size; x++) {
-// 			uint32_t cp = u32string_char(line, x);
-
-// 			if (!is_word(cp)) {
-// 				if (x > start) {
-// 					trie_insert(&ef->words,
-// 						u32string_into_ptr_const(line) + start,
-// 						x - start);
-// 				}
-
-// 				start = x + 1;
-// 			}
-// 		}
-
-// 		if (start < size) {
-// 			trie_insert(&ef->words,
-// 				u32string_into_ptr_const(line) + start,
-// 				size - start);			
-// 		}
-// 	}
-// }

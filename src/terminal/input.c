@@ -22,12 +22,12 @@ void show_cursor() {
 void clean_terminal() {
 	show_cursor();
 	// write(STDOUT_FILENO, "\x1b]122\x07", strlen("\x1b]112\x07"));
-	write(STDOUT_FILENO, "\033[3J", 4);
 	write(STDOUT_FILENO, "\033[2J", 4);
 	write(STDOUT_FILENO, "\033[H", 3);
 
-
-	write(STDOUT_FILENO, CURSOR_STYLE_DEFAULT, CURSOR_STYLE_SIZE);
+	if (terminal_supports_xterm_extensions()) {
+		write(STDOUT_FILENO, CURSOR_STYLE_DEFAULT, CURSOR_STYLE_SIZE);
+	}
 }
 
 void disable_raw_mode() {
@@ -55,7 +55,8 @@ void enable_raw_mode() {
 	struct termios raw = orig_termios;
 
 	raw.c_lflag &= ~(ECHO | ICANON);
-	raw.c_lflag &= ~(ISIG); // important
+	/* Pass control keys such as Ctrl+V through instead of VLNEXT. */
+	raw.c_lflag &= ~(ISIG | IEXTEN);
 	raw.c_iflag &= ~(IXON);
 	raw.c_cc[VMIN] = 1;
 	raw.c_cc[VTIME] = 0;

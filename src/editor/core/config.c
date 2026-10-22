@@ -816,12 +816,12 @@ int config_load_specific_theme(struct config* config, const char* theme) {
 	FILE* file = fopen(path, "r");
 
 	if (!file) {
-		sprintf(path, "/usr/local/share/nytor/themes/%s", theme);
+		snprintf(path, sizeof(path), "%s/themes/%s", NYTOR_DATADIR, theme);
 
 		file = fopen(path, "r");
 
 		if (!file) {
-			sprintf(path, "/usr/share/nytor/themes/%s", theme);
+			snprintf(path, sizeof(path), "/usr/share/nytor/themes/%s", theme);
 
 			file = fopen(path, "r");
 

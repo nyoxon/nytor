@@ -1,6 +1,10 @@
 #ifndef FILES_H
 #define FILES_H
 
+#ifndef NYTOR_DATADIR
+#define NYTOR_DATADIR "/usr/local/share/nytor"
+#endif
+
 #include <time.h>
 
 #define PATH_MAX_LENGTH 1024

@@ -270,7 +270,8 @@ int editor_handle_normal_input(Editor* editor, struct normal_key key) {
 		return 1;
 	}
 
-	if (content == 127) {
+	/* Backspace is DEL (127) in many terminals and BS (8) in others. */
+	if (content == 127 || content == '\b') {
 		if (!editor->sel.active &&
 			editor->cursor.pos.x > 0 && 
 			editor->cursor.pos.x < file_size_line(

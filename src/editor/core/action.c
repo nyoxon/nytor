@@ -6,10 +6,13 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
-#include <sys/inotify.h>
 #include <poll.h>
 #include <sys/wait.h>
+#ifdef __FreeBSD__
+#include <libutil.h>
+#else
 #include <pty.h>
+#endif
 #include <pwd.h>
 
 #include "editor/core/action.h"
@@ -431,7 +434,7 @@ void editor_create_new_file
 		.readonly = readonly,
 		.default_tab_size = editor->config.tab_size,
 		.default_use_spaces = editor->config.use_spaces,
-		.inotify_fd = -1
+		.file_watch_fd = -1
 	};
 
 	EditorFile new_file = editor_file_prototype(&options);
@@ -552,7 +555,7 @@ void editor_open_file
 		.readonly = readonly,
 		.default_tab_size = editor->config.tab_size,
 		.default_use_spaces = editor->config.use_spaces,
-		.inotify_fd = editor->inotify_fd
+		.file_watch_fd = editor->file_watch_fd
 	};
 
 	EditorFile ef = editor_file_prototype(&options);
@@ -631,7 +634,7 @@ void editor_close_file_forced(Editor* editor, size_t index) {
 	// anyway
 	editor_file_del_watcher(
 		ef,
-		editor->inotify_fd
+		editor->file_watch_fd
 	);
 
 	vector_remove_and_destroy(&editor->files, index);
@@ -733,7 +736,7 @@ void editor_close_file
 	// anyway
 	editor_file_del_watcher(
 		ef,
-		editor->inotify_fd
+		editor->file_watch_fd
 	);
 
 	vector_remove_and_destroy(&editor->files, index);
@@ -898,7 +901,7 @@ int editor_save_file(Editor* editor, size_t index) {
 		editor_file_set_watcher(
 			ef,
 			ef->file.path,
-			editor->inotify_fd
+			editor->file_watch_fd
 		);
 	}
 
@@ -3570,7 +3573,16 @@ int editor_insert_pattern_at
 	InsertAtType type
 )
 {
-	int ret;
+	if (editor->actual_file->readonly) {
+		prompt_init(
+			&editor->status_bar,
+			PROMPT_READONLY,
+			PT_INFO);
+
+		return -1;
+	}
+	
+	int ret = 0;
 
 	Position first = { 0, editor->cursor.pos.y };
 	Position last = first;
@@ -3643,7 +3655,6 @@ int editor_insert_pattern_at
 		}
 	}
 
-	ret = 0;
 	return ret;
 }
 

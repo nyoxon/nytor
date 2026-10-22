@@ -521,7 +521,7 @@ void prompt_handle_normal_input
 		prompt_move_cursor_left(pt);
 	}
 
-	else if (content == 127) {
+	else if (content == 127 || content == '\b') {
 		prompt_delete_char(pt);
 	}
 

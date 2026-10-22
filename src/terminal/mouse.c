@@ -3,11 +3,12 @@
 #include <signal.h>
 
 #include "terminal/mouse.h"
+#include "terminal/style.h"
 
 static volatile sig_atomic_t mouse_enabled = 0;
 
 void mouse_on() {
-	if (mouse_enabled) {
+	if (mouse_enabled || !terminal_supports_xterm_extensions()) {
 		return;
 	}
 

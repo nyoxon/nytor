@@ -13,3 +13,13 @@ ADDED: the x86 lexer now supports GNU assembly syntax.
 CHANGE: the `system` command has been renamed to `shell`,
 and it now creates a new file containing the contents
 of the program being called.
+
+
+21/10/26
+
+ADDED: FreeBSD port (kqueue + specific headers + pkg)
+
+ADDED: some extra verifications about colors inside the
+terminal.
+
+CHANGE: Compilation with Make is now smarter

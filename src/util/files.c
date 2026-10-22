@@ -89,7 +89,7 @@ int make_config_path
 	int fd = open(out, O_RDONLY);
 
 	if (fd < 0) {
-		n = sprintf(out, "/usr/local/share/nytor/config.ny");
+		n = snprintf(out, size, "%s/config.ny", NYTOR_DATADIR);
 
 		if (n < 0 || (size_t) n >= size) {
 			return -1;
@@ -98,7 +98,7 @@ int make_config_path
 		fd = open(out, O_RDONLY);
 
 		if (fd < 0) {
-			n = sprintf(out, "/usr/share/nytor/config.ny");
+			n = snprintf(out, size, "/usr/share/nytor/config.ny");
 
 			if (n < 0 || (size_t) n >= size) {
 				return -1;
@@ -150,7 +150,7 @@ int make_theme_path
 	int fd = open(out, O_RDONLY);
 
 	if (fd < 0) {
-		n = sprintf(out, "/usr/local/share/nytor/themes/%s", path);
+		n = snprintf(out, size, "%s/themes/%s", NYTOR_DATADIR, path);
 
 		if (n < 0 || (size_t) n >= size) {
 			return -1;
@@ -159,7 +159,7 @@ int make_theme_path
 		fd = open(out, O_RDONLY);
 
 		if (fd < 0) {
-			n = sprintf(out, "/usr/share/nytor/themes/%s", path);
+			n = snprintf(out, size, "/usr/share/nytor/themes/%s", path);
 
 			if (n < 0 || (size_t) n >= size) {
 				return -1;
@@ -210,8 +210,8 @@ int make_plugin_language_path
 	int fd = open(out, O_RDONLY);
 
 	if (fd < 0) {
-		n = sprintf(out, 
-			"/usr/local/share/nytor/plugins/languages/%s.so", path);
+		n = snprintf(out, size, "%s/plugins/languages/%s.so",
+			NYTOR_DATADIR, path);
 
 		if (n < 0 || (size_t) n >= size) {
 			return -1;
@@ -220,7 +220,7 @@ int make_plugin_language_path
 		fd = open(out, O_RDONLY);
 
 		if (fd < 0) {
-			n = sprintf(out,
+			n = snprintf(out, size,
 				"/usr/share/nytor/plugins/languages/%s.so", path);
 
 			if (n < 0 || (size_t) n >= size) {

@@ -92,6 +92,9 @@ struct color color_ansi(enum ansi_color);
 struct color color_rgb(uint8_t r, uint8_t g, uint8_t b);
 
 void write_color(const struct style* s);
+int terminal_supports_truecolor(void);
+int terminal_supports_256_colors(void);
+int terminal_supports_xterm_extensions(void);
 void reset_color();
 void invert_color();
 

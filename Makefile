@@ -3,31 +3,42 @@ PACKAGE = nyt
 PACKAGE_DIR = package
 DEB_PATH = $(PACKAGE)_$(VERSION)_amd64.deb
 
-CC      := gcc
+CC      ?= cc
 
 
 # normal executable
 CFLAGS  := -O2 -Wall -Wextra -Wpedantic -MMD -MP
-CFLAGS += -DNYTOR_VERSION=\"$(VERSION)\" -std=c17 -D_GNU_SOURCE
+CFLAGS += -DNYTOR_VERSION=\"$(VERSION)\" -std=c17
 
 
 # GDB nerds
 CFLAGS_DEBUG := -O0 -Wall -Wextra -Wpedantic -MMD -MP 
 CFLAGS_DEBUG += -g3
-CFLAGS_DEBUG += -DNYTOR_VERSION=\"$(VERSION)\" -std=c17 
-CFLAGS_DEBUG += -D_GNU_SOURCE
+CFLAGS_DEBUG += -DNYTOR_VERSION=\"$(VERSION)\" -std=c17
 
 
 # no time for GDB
 CFLAGS_SANITIZE := -O0 -Wall -Wextra -Wpedantic -MMD -MP
 CFLAGS_SANITIZE += -fsanitize=address,undefined
 CFLAGS_SANITIZE += -DNYTOR_VERSION=\"$(VERSION)\" -std=c17
+
+# glibc hides a few declarations under strict C
+# modes unless feature-test
+# macros are enabled. FreeBSD exposes the
+# interfaces used here without this.
+ifeq ($(shell uname -s),Linux)
+CFLAGS += -D_GNU_SOURCE
+CFLAGS_DEBUG += -D_GNU_SOURCE
 CFLAGS_SANITIZE += -D_GNU_SOURCE
+endif
 
 
 CPPFLAGS := -Isrc -Iinclude
 
 LDFLAGS := -lm -ldl
+ifeq ($(shell uname -s),FreeBSD)
+LDFLAGS += -lutil
+endif
 LDFLAGS_SANITIZE := -fsanitize=address,undefined
 
 SRC_DIR := src
@@ -60,6 +71,8 @@ PREFIX ?= /usr/local
 BINDIR = $(PREFIX)/bin
 MANDIR = $(PREFIX)/share/man
 DATADIR = $(PREFIX)/share/nytor
+
+CPPFLAGS += -DNYTOR_DATADIR=\"$(DATADIR)\"
 
 DEB_PREFIX ?= /usr
 DEB_MANDIR = $(DEB_PREFIX)/share/man
@@ -102,26 +115,34 @@ $(PLUGIN_BUILD_DIR)/%.so: $(PLUGIN_SRC_DIR)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -shared -fPIC $< -o $@
 
-install: $(TARGET)
+install: $(TARGET) $(PLUGINS)
 	strip $(TARGET)
-	install -Dm755 $(TARGET) $(DESTDIR)$(BINDIR)/$(TARGET)
+	install -d $(DESTDIR)$(BINDIR) $(DESTDIR)$(DATADIR) \
+		$(DESTDIR)$(DATADIR)/themes \
+		$(DESTDIR)$(DATADIR)/plugins \
+		$(DESTDIR)$(DATADIR)/plugins/languages \
+		$(DESTDIR)$(MANDIR)/man1
+	install -m755 $(TARGET) $(DESTDIR)$(BINDIR)/$(TARGET)
 
-	install -Dm644 config/config.ny $(DESTDIR)$(DATADIR)/config.ny
+	install -m644 config/config.ny $(DESTDIR)$(DATADIR)/config.ny
 
-	install -d $(DESTDIR)$(DATADIR)/themes
 	install -m644 themes/* $(DESTDIR)$(DATADIR)/themes/
+	install -m644 plugins/*.lua $(DESTDIR)$(DATADIR)/plugins/
 
-	install -d $(DESTDIR)$(DATADIR)/plugins/languages
-	cp -r plugins/shared/* $(DESTDIR)$(DATADIR)/plugins/languages/
+	for plugin in $(PLUGINS); do \
+		name=$$(basename "$$(dirname "$$plugin")"); \
+		install -m755 "$$plugin" \
+			"$(DESTDIR)$(DATADIR)/plugins/languages/$$name.so"; \
+	done
 
-	install -Dm644 manual/nyt.1 $(DESTDIR)$(MANDIR)/man1/nyt.1
+	install -m644 manual/nyt.1 $(DESTDIR)$(MANDIR)/man1/nyt.1
 
 uninstall:
 	rm -rf $(DESTDIR)$(BINDIR)/$(TARGET)
 	rm -rf $(DESTDIR)$(DATADIR)
 	rm -rf $(DESTDIR)$(MANDIR)/man1/nyt.1
 
-deb: $(TARGET)
+deb: sync-version $(TARGET)
 	rm -rf $(PACKAGE_DIR)
 	mkdir -p $(PACKAGE_DIR)/DEBIAN
 
@@ -133,6 +154,8 @@ deb: $(TARGET)
 
 	install -d $(PWD)/$(PACKAGE_DIR)$(DEB_DATADIR)/themes
 	install -m644 themes/* $(PWD)/$(PACKAGE_DIR)$(DEB_DATADIR)/themes/
+	install -d $(PWD)/$(PACKAGE_DIR)$(DEB_DATADIR)/plugins
+	install -m644 plugins/*.lua $(PWD)/$(PACKAGE_DIR)$(DEB_DATADIR)/plugins/
 
 	install -d $(PWD)/$(PACKAGE_DIR)$(DEB_DATADIR)/plugins/languages
 	cp -r plugins/shared/* $(PWD)/$(PACKAGE_DIR)$(DEB_DATADIR)/plugins/languages/
@@ -144,8 +167,18 @@ deb: $(TARGET)
 clean:
 	rm -rf $(BIN_DIR) $(TARGET) $(TARGET_DEBUG) $(TARGET_SANITIZE) $(PACKAGE_DIR) $(DEB_PATH) debug.ny
 
+# Keep release metadata derived from VERSION above.
+sync-version:
+	sh scripts/sync_version.sh
+
+check-version:
+	sh scripts/sync_version.sh --check
+
+freebsd-pkg: sync-version
+	sh scripts/package_freebsd.sh
+
 -include $(DEPS)
 -include $(DEPS_DEBUG)
 -include $(DEPS_SANITIZE)
 
-.PHONY: all clean
+.PHONY: all clean sync-version check-version freebsd-pkg

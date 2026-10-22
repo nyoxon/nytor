@@ -10,6 +10,7 @@
 
 #include "plugins/lua_plugin.h"
 #include "editor/core/action.h"
+#include "util/files.h"
 #include "util/types/u32string.h"
 
 // Lua's ABI is loaded at runtime, so 
@@ -164,7 +165,7 @@ static size_t get_plugin_directories
 	
 	strncpy(
 		priorities[count++], 
-		"/usr/local/share/nytor/plugins",
+		NYTOR_DATADIR "/plugins",
 		PATH_MAX_LENGTH - 1
 	);
 	
@@ -375,6 +376,12 @@ static void* load_symbol(void* library, const char* name) {
 // load all the necessary functions
 static int lua_api_load(LuaApi* api) {
 	static const char* libraries[] = {
+		"liblua-5.4.so.0",
+		"liblua-5.3.so.0",
+		"liblua-5.2.so.0",
+		"liblua-5.4.so",
+		"liblua-5.3.so",
+		"liblua-5.2.so",
 		"liblua5.4.so.0", 
 		"liblua5.3.so.0", 
 		"liblua5.2.so.0",

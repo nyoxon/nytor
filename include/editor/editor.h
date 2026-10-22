@@ -39,7 +39,7 @@ typedef struct {
 	EditorFile* actual_file;
 	size_t actual_file_index;
 
-	int inotify_fd;
+	int file_watch_fd;
 
 	struct config config;
 
@@ -87,7 +87,7 @@ void editor_file_set_lang_plugin
 	const Vector* lang_plugins_data
 );
 
-void editor_check_inotify(Editor* editor);
+void editor_check_file_watch(Editor* editor);
 
 
 // to check if editor has ef whose index

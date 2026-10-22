@@ -99,7 +99,7 @@ int main(int argc, char* argv[]) {
 			.events = POLLIN
 		},
 		{
-			.fd = editor.inotify_fd,
+			.fd = editor.file_watch_fd,
 			.events = POLLIN
 		}
 	};
@@ -121,9 +121,9 @@ int main(int argc, char* argv[]) {
 		Flow:
 
 		signals -> 
-			inotify -> 
+			file watch ->
 				render -> 
-					log -> poll (user input/inotify, may block)
+					log -> poll (user input/file watch, may block)
 		*/
 
 
@@ -152,7 +152,7 @@ int main(int argc, char* argv[]) {
 
 
 
-		/// --- INOTIFY ---
+		/// --- FILE WATCH ---
 		if (editor.actual_file->file.filename &&
 			editor_file_changed(editor.actual_file))
 		{
@@ -190,7 +190,7 @@ int main(int argc, char* argv[]) {
 			}
 
 			if (fds[1].revents & POLLIN) {
-				editor_check_inotify(&editor);
+				editor_check_file_watch(&editor);
 			}
 		}
 

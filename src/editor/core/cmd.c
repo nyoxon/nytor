@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <dirent.h>
 #include <libgen.h>
+#include <sys/wait.h>
 
 #include "editor/core/cmd.h"
 #include "editor/core/action.h"
@@ -2051,6 +2052,15 @@ int editor_handle_cmd
 
 		// > saveas atumalaka.laka
 		else {
+			if (editor->actual_file->readonly) {
+				prompt_init(
+					&editor->status_bar,
+					PROMPT_READONLY,
+					PT_INFO);
+
+				goto cleanup;				
+			}
+			
 			const char* new_name = words[1];
 
 			ssize_t index = editor_has_file(editor, new_name);
@@ -2079,7 +2089,7 @@ int editor_handle_cmd
 				// otherwise, the user would receive a noti notification
 				editor_file_del_watcher(
 					editor->actual_file,
-					editor->inotify_fd
+					editor->file_watch_fd
 				);
 
 				int ret = rename(
@@ -2090,7 +2100,7 @@ int editor_handle_cmd
 				editor_file_set_watcher(
 					editor->actual_file,
 					new_name,
-					editor->inotify_fd
+					editor->file_watch_fd
 				);
 
 				if (ret != 0) {
@@ -3299,8 +3309,7 @@ int editor_handle_cmd
 
 			const char* value = words[2];
 
-			if (strcmp(value, "readonly") == 0 &&
-				!editor->actual_file->readonly) 
+			if (strcmp(value, "readonly") == 0) 
 			{
 				editor_file_set_readonly(
 					editor->actual_file);
@@ -3308,8 +3317,7 @@ int editor_handle_cmd
 				goto cleanup;
 			}
 
-			if (strcmp(value, "writeable") == 0 &&
-				editor->actual_file->readonly) 
+			if (strcmp(value, "writeable") == 0) 
 			{
 				if (editor_file_set_writeable(
 					editor->actual_file) < 0)
@@ -3712,11 +3720,11 @@ int editor_handle_cmd
 		DIR* dir = opendir(path);
 
 		if (!dir) {
-			sprintf(path, "/usr/local/share/nytor/themes");
+			snprintf(path, sizeof(path), "%s/themes", NYTOR_DATADIR);
 			dir = opendir(path);
 			
 			if (!dir) {
-				sprintf(path, "/usr/share/nytor/themes");
+				snprintf(path, sizeof(path), "/usr/share/nytor/themes");
 				dir = opendir(path);
 				
 				if (!dir) {
@@ -3788,10 +3796,14 @@ int editor_handle_cmd
 
 	/// --- LUA PLUGIN COMMAND ---
 	char plugin_path[PATH_MAX_LENGTH];
+
 	if (lua_plugin_find(words[0], plugin_path, sizeof(plugin_path))) {
 		char error[512];
-		if (lua_plugin_run(editor, plugin_path, error, sizeof(error)) < 0)
+
+		if (lua_plugin_run(editor, plugin_path, error, sizeof(error)) < 0) {
 			prompt_init(&editor->status_bar, error, PT_INFO);
+		}
+
 		goto cleanup;
 	}
 	

@@ -443,7 +443,15 @@ void editor_move_screen_cursor(Editor* editor) {
 
 void editor_render(Editor* editor) {
 	clean_terminal();
-	write(STDOUT_FILENO, editor->config.ui.cursor_style, CURSOR_STYLE_SIZE);
+	
+	if (terminal_supports_xterm_extensions()) {
+		write(
+			STDOUT_FILENO, 
+			editor->config.ui.cursor_style, 
+			CURSOR_STYLE_SIZE
+		);
+	}
+
 	write(STDOUT_FILENO, "\033[H", 3);
 
 	size_t gutter_width = (editor->config.line_numbers)

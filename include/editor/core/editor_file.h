@@ -26,7 +26,7 @@ typedef struct {
 	size_t default_tab_size;
 	int default_use_spaces;
 
-	int inotify_fd;
+	int file_watch_fd;
 } EditorFileOptions;
 
 typedef enum {
@@ -82,7 +82,9 @@ typedef struct {
 	int replace;
 
 	int watch_descriptor;
-	int inotify_fd;
+	int watch_file_descriptor;
+	int file_watch_fd;
+	
 	FileMetadata metadata;
 
 	int externally_modified;
@@ -139,19 +141,19 @@ void editor_file_set_watcher
 (
 	EditorFile* ef, 
 	const char* filename,
-	int inotify_fd
+	int file_watch_fd
 );
 
-void editor_file_del_watcher(EditorFile* ef, int inotify_fd);
+void editor_file_del_watcher(EditorFile* ef, int file_watch_fd);
 
 void editor_file_update_metadata(EditorFile* ef);
 
 void handle_file_modified(EditorFile* ef);
-void handle_file_deleted(EditorFile* ef, int inotify_fd);
-void handle_file_moved_from(EditorFile* ef, int inotify_fd);
+void handle_file_deleted(EditorFile* ef, int file_watch_fd);
+void handle_file_moved_from(EditorFile* ef, int file_watch_fd);
 void handle_file_moved_into(EditorFile* ef);
 void handle_file_attrib_changed(EditorFile* ef);
-void handle_file_create(EditorFile* ef, int inotify_fd);
+void handle_file_create(EditorFile* ef, int file_watch_fd);
 
 void editor_file_sync(EditorFile* ef, Result* result);
 void editor_file_reaload_words(EditorFile* ef);

@@ -43,8 +43,12 @@ static int programs_exists(const char* program)
 
 void detect_clipboard_backend() {
 	const char* session =  getenv("XDG_SESSION_TYPE");
+	const char* wayland_display = getenv("WAYLAND_DISPLAY");
+	const char* x_display = getenv("DISPLAY");
 
-	if (session && strcmp(session, "wayland") == 0) {
+	if ((session && strcmp(session, "wayland") == 0) ||
+		(!session && wayland_display && *wayland_display)) 
+	{
 		if (programs_exists("wl-paste") &&
 			programs_exists("wl-copy"))
 		{
@@ -56,7 +60,9 @@ void detect_clipboard_backend() {
 		}
 	}
 
-	else if (session && strcmp(session, "x11") == 0) {
+	else if ((session && strcmp(session, "x11") == 0) ||
+		(!session && x_display && *x_display)) 
+	{
 		if (programs_exists("xclip")) {
 			CB_BACKEND = CLIPBOARD_XCLIP;
 		}

@@ -5,8 +5,8 @@
 ![nytor demo](assets/demo.gif)
 
 `nytor` is a terminal-based text editor focused on being fast, lightweight, 
-minimal and somehow extensible, while providing a modern editing experience for 
-linux only (for now).
+minimal and somehow extensible, while providing a modern editing experience for
+Linux and FreeBSD.
 
 The idea behind it was to create a terminal-based editor 
 like vim or hex (which i don't like because they are horrible to use)
@@ -80,7 +80,12 @@ plugins/
 ```
 
 The lexer sources are kept under `plugins/lexers/`; `make plugins` builds them
-under `build/plugins/lexers/`.
+under `build/plugins/lexers/`. `make install` builds and installs those
+platform-specific libraries; it does not reuse the checked-in Linux binaries
+under `plugins/shared/`. Installation also places the bundled Lua scripts under
+the data directory's `plugins/`. `scripts/build_plugins.sh` is a POSIX shell
+script that builds and copies the shared libraries; on FreeBSD it selects
+`gmake` by default, or accepts an alternate command through `MAKE`.
 
 ### Prompt command
 
@@ -149,7 +154,7 @@ In addition to those presented above, the editor has several other features, suc
 - indent/unindent a line/selection (Ctrl + P/O or `indent`/`unindent` cmds)
 - set/unset a file as readonly (`set` cmd)
 - render a visual representation of spaces and tabs (Alt + T or `show` cmd)
-- inotify handler
+- external file-change handler
 - (...)
 
 ### Possible future features
@@ -163,34 +168,27 @@ In addition to those presented above, the editor has several other features, suc
 ## Installation
 
 ### Dependencies
+In order to compile the project, you'll need `gcc` and `make` (preferably GNU's make).
 
 On Debian-based systems:
 
 ```bash
-sudo apt install gcc make
+apt install gcc make
 ```
-
-In order to use your system's clipboard, you'll need:
-
-#### Wayland:
-
+On FreeBSD:
 ```bash
-sudo apt install wl-clipboard
+pkg install gcc gmake
 ```
+In order to use your system's clipboard, you'll need one of these programs, depending on your graphical session:
 
-#### X11:
-
-```bash
-sudo apt install xclip
-```
-
-or
-
-```bash
-sudo apt install xsel
-```
+- wl-clipboard (wayland)
+- xclip		   (x11)
+- xsel		   (x11)
 
 None of this is really necessary, as the editor has an internal clipboard, but it's required if you want to copy text from within the editor directly to your system clipboard and vice versa.
+
+From now on, i'll provide examples using only `make` with a focus on
+Linux/Debian-based systems, though they should also work for `gmake` on FreeBSD and likely on other Linux systems as well.
 
 ### Building
 
@@ -218,6 +216,18 @@ or
 
 You can exit the program by pressing Ctrl + Q
 
+#### FreeBSD details
+On FreeBSD, install GNU make with `pkg install gmake` and build using `gmake`.
+The base system compiler is supported; use `gmake CC=gcc` to select GCC.
+FreeBSD builds link against the base system's `libutil` for the embedded
+terminal.
+
+#### Advanced details
+
+The Makefile's `VERSION` is canonical: run
+`gmake sync-version` after changing it to update the man page and package
+metadata, or `gmake check-version` to detect drift.
+
 ### Installing
 
 You can automatically install the program with a default
@@ -228,7 +238,11 @@ make
 sudo make install
 ```
 
-There is also a .deb package that installs the program (check Releases section).
+To use a different install prefix, clean and pass the same `PREFIX` to build
+and install, for example `gmake clean`, `gmake PREFIX=/opt/nytor`, then
+`gmake PREFIX=/opt/nytor install`.
+
+If `PREFIX` is not provided during compilation, /usr/local/ will be used by default. The `PREFIX` will be used during compilation and its value will be "baked into" the programs executable; this means the program knows where to look at and you'll probably need to recompile the program if you wish to change the configuration directory.
 
 ## Default config file, themes and plugins
 
@@ -238,7 +252,7 @@ plugins, etc, must be located in one of these three directories
 precisely this order):
 
 - $HOME/.config/
-- /usr/local/share/
+- PREFIX/share/ (default: /usr/local/)
 - /usr/share/
 
 More specifically, the editor will search for the `nytor` directory
@@ -253,12 +267,9 @@ to exist only within $HOME. However, since i also want to use
 `make install` and distribute a `.deb` package, both of which
 require privileged permissions, it would be a bit odd
 to create directories within the user space. If you don't like
-this, feel free to create you own version of the editor (see [license](LICENSE)).
+this, feel free to create you own version of the editor (see [LICENSE](LICENSE)).
 
-When using `make install` to install the program, the default
-configuration files will be located in `/usr/local/share/nytor/`.
-If installed via the .deb package, they will be in
-`/usr/share/nytor/`.
+You can consult the [manual](manual/nyt.1) in order to learn how to use the configuration file (config.ny), create themes, and even build plugins. You can also consult the comments in the default [configuration](config/config.ny) and in the [default](themes/default) theme and have a read at, for example, the [C lexer](plugins/lexers/c/c_lexer.c) to see it in practice.
 
 ### Uninstalling
 
@@ -309,7 +320,7 @@ actually used for programming, it's almost impossible to find a non-ASCII
 character, meaning some memory would be wasted.
 I don't necessarily think it's a problem, but i do plan to change the
 storage strategy someday (and consequently, the strategy for access,
-removal, inserting, (..........................................)
+removal, inserting, and ...)
 
 - The autocomplete algorithm has complexity O(`size of file`).
 

@@ -8,7 +8,13 @@
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <signal.h>
+#ifdef __FreeBSD__
+#include <sys/event.h>
+#include <sys/time.h>
+#include <sys/stat.h>
+#else
 #include <sys/inotify.h>
+#endif
 
 #include "editor/editor.h"
 #include "editor/core/history.h"
@@ -17,7 +23,9 @@
 #include "terminal/input.h"
 #include "terminal/parser.h"
 
+#ifndef __FreeBSD__
 #define EVENT_BUF_LEN (1024 * sizeof(struct inotify_event) + 16)
+#endif
 
 void editor_prompt_init(Editor* editor);
 static int handle_config_error(const struct config* config);
@@ -98,7 +106,11 @@ int editor_init
 		vector_editor_file_destroy);
 
 
-	editor->inotify_fd = inotify_init();
+#ifdef __FreeBSD__
+	editor->file_watch_fd = kqueue(); // :D
+#else
+	editor->file_watch_fd = inotify_init();
+#endif
 
 
 	/// --- CREATE PROTOTYPES ---
@@ -108,7 +120,7 @@ int editor_init
 			.readonly = 0,
 			.default_tab_size = editor->config.tab_size,
 			.default_use_spaces = editor->config.use_spaces,
-			.inotify_fd = editor->inotify_fd
+			.file_watch_fd = editor->file_watch_fd
 		};
 
 		EditorFile ef = editor_file_prototype(&efoptions);
@@ -131,7 +143,7 @@ int editor_init
 				.readonly = start_readonly,
 				.default_tab_size = editor->config.tab_size,
 				.default_use_spaces = editor->config.use_spaces,
-				.inotify_fd = editor->inotify_fd
+				.file_watch_fd = editor->file_watch_fd
 			};
 
 			EditorFile ef = editor_file_prototype(&efoptions);
@@ -205,8 +217,8 @@ void editor_free(Editor* editor) {
 		window_close(&editor->window);
 	}
 
-	if (editor->inotify_fd > 0) {
-		close(editor->inotify_fd);
+	if (editor->file_watch_fd >= 0) {
+		close(editor->file_watch_fd);
 	}
 
 	destroy_lang_plugins(&editor->lang_plugins_data);
@@ -317,7 +329,7 @@ static EditorFile* find_file_by_watch
 			continue;
 		}
 
-		if (ef->watch_descriptor == wd) 
+		if (ef->watch_descriptor == wd || ef->watch_file_descriptor == wd)
 		{
 			return ef;
 		}
@@ -326,23 +338,102 @@ static EditorFile* find_file_by_watch
 	return NULL;
 }
 
-void editor_check_inotify(Editor* editor) {
-	if (editor->inotify_fd < 0) {
+void editor_check_file_watch(Editor* editor) {
+	if (editor->file_watch_fd < 0) {
 		if (editor->debug_mode) {
 			log_write(&editor->log, 
-				"editor_check_inotify: invalid fd");
+				"editor_check_file_watch: invalid fd");
 		}	
 
 		return;
 	}
 
+#ifdef __FreeBSD__
+	struct kevent events[32];
+	struct timespec timeout = {0, 0};
+
+	int count = kevent(
+		editor->file_watch_fd, 
+		NULL, 
+		0, 
+		events, 
+		32, 
+		&timeout
+	);
+
+	if (count < 0) {
+		return;
+	}
+
+	for (int i = 0; i < count; i++) {
+		EditorFile* ef = find_file_by_watch(
+			editor, 
+			(int) events[i].ident
+		);
+
+		if (!ef || !ef->file.filename) {
+			continue;
+		}
+
+		struct stat st;
+
+		if (stat(ef->file.path, &st) < 0) {
+			if (ef->metadata.inode != 0 && !ef->externally_deleted) {
+				handle_file_deleted(ef, editor->file_watch_fd);
+			}
+
+			continue;
+		}
+
+		if (ef->new_file) {
+			ef->externally_modified = 1;
+
+			if (ef->watch_file_descriptor < 0) {
+				editor_file_set_watcher(
+					ef, 
+					ef->file.path,
+					editor->file_watch_fd
+				);
+
+				editor_file_update_metadata(ef);
+			}
+		} 
+
+		else if (st.st_ino != ef->metadata.inode) {
+			ef->externally_modified = 1;
+
+			editor_file_del_watcher(
+				ef, 
+				editor->file_watch_fd
+			);
+
+			editor_file_set_watcher(
+				ef, 
+				ef->file.path,
+				editor->file_watch_fd
+			);
+
+			editor_file_update_metadata(ef);
+		} 
+
+		else {
+			handle_file_modified(ef);
+		}
+
+		if ((int) events[i].ident == ef->watch_file_descriptor &&
+			(events[i].fflags & NOTE_ATTRIB))
+		{
+			handle_file_attrib_changed(ef);
+		}
+	}
+#else
 	char buffer[EVENT_BUF_LEN];
 
-	ssize_t length = read(editor->inotify_fd, buffer, EVENT_BUF_LEN);
+	ssize_t length = read(editor->file_watch_fd, buffer, EVENT_BUF_LEN);
 
 	if (length < 0) {
 		if (editor->debug_mode) {
-			log_write(&editor->log, "editor_check_inotify: length < 0");
+			log_write(&editor->log, "editor_check_file_watch: length < 0");
 		}	
 
 		return;
@@ -358,7 +449,7 @@ void editor_check_inotify(Editor* editor) {
 		if (event->mask & IN_IGNORED) {
 			if (editor->debug_mode) {
 				log_write(&editor->log, 
-					"editor_check_inotify: ignored");
+					"editor_check_file_watch: ignored");
 			}
 
 			return;
@@ -367,7 +458,7 @@ void editor_check_inotify(Editor* editor) {
 		if (event->len == 0) {
 			if (editor->debug_mode) {
 				log_write(&editor->log, 
-					"editor_check_inotify: event->len == 0");
+					"editor_check_file_watch: event->len == 0");
 			}	
 
 			return;
@@ -380,7 +471,7 @@ void editor_check_inotify(Editor* editor) {
 		if (!ef) {
 			if (editor->debug_mode) {
 				log_write(&editor->log, 
-					"editor_check_inotify: no corresponding ef");
+					"editor_check_file_watch: no corresponding ef");
 			}
 
 			return;
@@ -393,7 +484,7 @@ void editor_check_inotify(Editor* editor) {
 
 			if (editor->debug_mode) {
 				log_write(&editor->log, 
-					"editor_check_inotify: different file %s",
+					"editor_check_file_watch: different file %s",
 					event->name);
 			}
 
@@ -402,7 +493,7 @@ void editor_check_inotify(Editor* editor) {
 
 		if (event->mask & IN_MOVED_TO) {
 			if (editor->debug_mode) {
-				log_write(&editor->log, "editor_check_inotify: moved_to");
+				log_write(&editor->log, "editor_check_file_watch: moved_to");
 			}	
 
 			handle_file_moved_into(ef);
@@ -410,7 +501,7 @@ void editor_check_inotify(Editor* editor) {
 
 		if (event->mask & IN_CLOSE_WRITE) {
 			if (editor->debug_mode) {
-				log_write(&editor->log, "editor_check_inotify: close_write");
+				log_write(&editor->log, "editor_check_file_watch: close_write");
 			}	
 
 			handle_file_modified(ef);
@@ -418,7 +509,7 @@ void editor_check_inotify(Editor* editor) {
 
 		if (event->mask & IN_MODIFY) {
 			if (editor->debug_mode) {
-				log_write(&editor->log, "editor_check_inotify: modify");
+				log_write(&editor->log, "editor_check_file_watch: modify");
 			}
 
 			handle_file_modified(ef);		
@@ -426,23 +517,23 @@ void editor_check_inotify(Editor* editor) {
 
 		if (event->mask & IN_DELETE) {
 			if (editor->debug_mode) {
-				log_write(&editor->log, "editor_check_inotify: delete");
+				log_write(&editor->log, "editor_check_file_watch: delete");
 			}
 
-			handle_file_deleted(ef, editor->inotify_fd);
+			handle_file_deleted(ef, editor->file_watch_fd);
 		}
 
 		if (event->mask & IN_MOVED_FROM) {
 			if (editor->debug_mode) {
-				log_write(&editor->log, "editor_check_inotify: moved_from");
+				log_write(&editor->log, "editor_check_file_watch: moved_from");
 			}	
 
-			handle_file_moved_from(ef, editor->inotify_fd);
+			handle_file_moved_from(ef, editor->file_watch_fd);
 		}
 
 		if (event->mask & IN_ATTRIB) {
 			if (editor->debug_mode) {
-				log_write(&editor->log, "editor_check_inotify: attrib");
+				log_write(&editor->log, "editor_check_file_watch: attrib");
 			}	
 
 			handle_file_attrib_changed(ef);
@@ -450,10 +541,10 @@ void editor_check_inotify(Editor* editor) {
 
 		if (event->mask & IN_CREATE) {
 			if (editor->debug_mode) {
-				log_write(&editor->log, "editor_check_inotify: create");
+				log_write(&editor->log, "editor_check_file_watch: create");
 			}	
 
-			handle_file_create(ef, editor->inotify_fd);
+			handle_file_create(ef, editor->file_watch_fd);
 		}
 
 		ptr += sizeof(struct inotify_event) + event->len;
@@ -461,8 +552,9 @@ void editor_check_inotify(Editor* editor) {
 
 
 	if (editor->debug_mode) {
-		log_write(&editor->log, "editor_check_inotify: reached end");
+		log_write(&editor->log, "editor_check_file_watch: reached end");
 	}	
+#endif
 }
 
 
