@@ -71,17 +71,22 @@ int main(int argc, char* argv[]) {
 	// --- EDITOR INIT AND CONFIGURATIONS ---
 	Editor editor = {0};
 
-	if (editor_init(&editor, &eoptions) < 0){
-		if (editor.result.type != ERROR_OK) {
-			fprintf(stderr, editor.result.reason);
+	Result result;
+	result_init(&result);
+
+	if (editor_init(&editor, &eoptions, &result) < 0) {
+		if (result.type != ERROR_OK) {
+			fprintf(stderr, "%s", result_reason(&result));
 		}
 
 		fprintf(stderr, "\n");
 
-		result_free(&editor.result);
+		result_free(&result);
 
 		return 1;
 	}
+
+	result_free(&result);
 
 
 
@@ -263,18 +268,28 @@ static uint32_t frame_interval_ms(uint32_t fps) {
 	return (1000 + fps / 2) / fps;
 }
 
-static void print_help() {
-	printf("--- nytor ---\n\n");
-	printf("usage: nyt [ARGUMENTS] [filepaths]\n\n");
-	printf("\n--- [ARGUMENTS] --- \n\n");
-	printf("  --help		-> prints this message\n\n");
-	printf("  --debug 		-> debug_mode\n\n");
-	printf("  --readonly		-> open the passed files as readonly\n\n");
-	printf("  --version		-> shows the version of the program\n\n");
-	printf("note: you must pass all arguments before passing a file;\n");
-	printf("otherwise, the passed argument will be treated as a file\n\n");
-	printf("see the man page if you have some free time:\n");
-	printf("\"man nyt\" or \"man manual/nyt.1\" after cloning https://github.com/nyoxon/nytor\n");
+static void print_help(void) {
+    printf(
+        "nytor - terminal text editor\n"
+        "\n"
+        "USAGE\n"
+        "    nyt [OPTIONS] [FILE...]\n"
+        "\n"
+        "OPTIONS\n"
+        "    -h, --help       Print this help message\n"
+        "    -d, --debug      Enable debug mode\n"
+        "    -r, --readonly   Open files in read-only mode\n"
+        "    -v, --version    Print version information\n"
+        "    -c, --config     Open the first available config file\n"
+        "\n"
+        "NOTES\n"
+        "    Options must precede file paths. Arguments appearing\n"
+        "    after a file path are treated as file paths.\n"
+        "\n"
+        "DOCUMENTATION\n"
+        "    man nyt\n"
+        "    https://github.com/nyoxon/nytor\n"
+    );
 }
 
 static int parse_args
@@ -288,6 +303,7 @@ static int parse_args
 
 	struct option long_opts[] = {
 		{"debug", 		no_argument, 0, 'd'},
+		{"config",		no_argument, 0, 'c'},
 		{"help", 		no_argument, 0, 'h'},
 		{"version", 	no_argument, 0, 'v'},
 		{"readonly", 	no_argument, 0, 'r'},
@@ -295,11 +311,15 @@ static int parse_args
 		{0, 0, 0, 0}
 	};
 
-	while ((opt = getopt_long(argc, argv, "+dvhr", long_opts, NULL)) > 0) 
+	while ((opt = getopt_long(argc, argv, "+dcvhr", long_opts, NULL)) > 0) 
 	{
 		switch (opt) {
 			case 'd':
 				eoptions->debug_mode = 1;
+				break;
+
+			case 'c':
+				eoptions->open_config = 1;
 				break;
 
 			case 'h':

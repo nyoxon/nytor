@@ -30,6 +30,7 @@ typedef struct {
 
 	int debug_mode;
 	int start_readonly;
+	int open_config;
 } EditorOptions;
 
 // a Editor represents the editor itself
@@ -57,8 +58,6 @@ typedef struct {
 	int selecting;
 	int debug_mode;
 
-	Result result;
-
 	Log log;
 
 	Prompt status_bar;
@@ -74,7 +73,8 @@ typedef struct {
 
 
 // create a Editor
-int editor_init(Editor* editor,const EditorOptions* eoptions);
+// result is optional diagnostic output and must be initialized by the caller.
+int editor_init(Editor* editor, const EditorOptions* eoptions, Result* result);
 
 void editor_free(Editor* editor);
 
@@ -104,8 +104,7 @@ ssize_t editor_has_equal_filename
 // is the same as the passed one
 ssize_t editor_has_file(const Editor* editor, const char* path);
 
-// write a message into the editor's log
-void editor_log_write(const Editor* editor);
+ssize_t editor_has_language(const Editor* editor, const char* name);
 
 void editor_create_syntax(Editor* editor);
 void editor_update_syntax(Editor* editor);

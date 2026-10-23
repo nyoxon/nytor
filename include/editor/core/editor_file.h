@@ -155,7 +155,7 @@ void handle_file_moved_into(EditorFile* ef);
 void handle_file_attrib_changed(EditorFile* ef);
 void handle_file_create(EditorFile* ef, int file_watch_fd);
 
-void editor_file_sync(EditorFile* ef, Result* result);
+int editor_file_sync(EditorFile* ef, Result* result);
 void editor_file_reaload_words(EditorFile* ef);
 
 int editor_file_changed(const EditorFile* ef);

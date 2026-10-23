@@ -250,8 +250,13 @@ static ssize_t check_has_reserved_filename
 			continue;
 		}
 
-		for (size_t j = 0; j < data->language->reserved_filename_count; j++) {
-			if (strcmp(filename, data->language->reserved_filenames[j]) == 0) {
+		for (size_t j = 0;
+			j < data->language->reserved_filename_count;
+			j++)
+		{
+			if (strcmp(filename,
+					   data->language->reserved_filenames[j]) == 0)
+			{
 				return i;
 			}
 		}
@@ -601,26 +606,42 @@ void handle_file_create(EditorFile* ef, int file_watch_fd) {
 	}
 }
 
-void editor_file_sync
+int editor_file_sync
 (
 	EditorFile* ef,
 	Result* result
 ) 
 {
+	result_ok(result);
+
+	if (!ef) {
+		result_set_error(
+			result,
+			ERROR_INVALID_ARGUMENT,
+			"editor_file_sync: ef is NULL"
+		);
+
+		return EIE_FATAL_ERROR;
+	}
+
 	if (!ef->file.filename || ef->new_file) {
-		return;
+		return EIE_NOT_AN_ERROR;
+	}
+
+	int ret = file_sync(
+		&ef->file,
+		result
+	);
+
+	if (ret < 0) {
+		return ret;
 	}
 
 	ef->new_file = 0;
-
 	ef->cursor = (Cursor) { POS_ZERO, 0 };
 
 	stack_clear(&ef->undo);
 	stack_clear(&ef->redo);
-
-	file_sync(
-		&ef->file, 
-		result);
 
 	editor_file_update_metadata(ef);
 
@@ -634,6 +655,8 @@ void editor_file_sync
 	ef->externally_attrib_changed = 0;
 	
 	ef->internal = 0;
+
+	return EIE_OK;
 }
 
 int editor_file_changed(const EditorFile* ef) {
@@ -666,18 +689,18 @@ void editor_file_set_readonly(EditorFile* ef) {
 }
 
 int editor_file_set_writeable(EditorFile* ef) {
-	const char* filename = ef->file.filename;
+	const char* path = ef->file.path;
 
 	// i don't know what the use would be, but it is
 	// allowed.
-	if (!filename) {
+	if (!path) {
 		ef->readonly = 0;
 		goto end;
 	}
 
 	// EAFP
 	else {
-		int fd = open(filename, O_WRONLY);
+		int fd = open(path, O_WRONLY);
 
 		if (fd < 0) {
 			return -1;

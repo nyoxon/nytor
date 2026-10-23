@@ -761,7 +761,7 @@ int u32_encode(uint32_t cp, char out[4]) {
 int u32_decode(const char* text, size_t size, uint32_t* cp) {
 	const unsigned char* s = (const unsigned char*) text;
 
-	if (size == 0) {
+	if (!text || !cp || size == 0) {
 		return -1;
 	}
 
@@ -770,43 +770,53 @@ int u32_decode(const char* text, size_t size, uint32_t* cp) {
 		return 1;
 	}
 
-	if ((s[0] & 0xE0) == 0xC0) {
-		if (size < 2) {
+	size_t length;
+	uint32_t codepoint;
+	uint32_t minimum;
+
+	if (s[0] >= 0xC2 && s[0] <= 0xDF) {
+		length = 2;
+		codepoint = s[0] & 0x1F;
+		minimum = 0x80;
+	}
+
+	else if (s[0] >= 0xE0 && s[0] <= 0xEF) {
+		length = 3;
+		codepoint = s[0] & 0x0F;
+		minimum = 0x800;
+	}
+
+	else if (s[0] >= 0xF0 && s[0] <= 0xF4) {
+		length = 4;
+		codepoint = s[0] & 0x07;
+		minimum = 0x10000;
+	}
+
+	else {
+		return -1;
+	}
+
+	if (size < length) {
+		return -1;
+	}
+
+	for (size_t i = 1; i < length; i++) {
+		if ((s[i] & 0xC0) != 0x80) {
 			return -1;
 		}
 
-		*cp = ((s[0] & 0x1F) << 6) |
-			   (s[1] & 0x3F);
-
-		return 2;
+		codepoint = (codepoint << 6) | (s[i] & 0x3F);
 	}
 
-	if ((s[0] & 0xF0) == 0xE0) {
-		if (size < 3) {
-			return -1;
-		}
-
-		*cp = ((s[0] & 0x0F) << 12) |
-			  ((s[1] & 0x3F) << 6) |
-			   (s[2] & 0x3F);
-
-		return 3;
+	if (codepoint < minimum ||
+		codepoint > 0x10FFFF ||
+		(codepoint >= 0xD800 && codepoint <= 0xDFFF))
+	{
+		return -1;
 	}
 
-	if ((s[0] & 0xF8) == 0xF0) {
-		if (size < 4) {
-			return -1;
-		}
-
-		*cp = ((s[0] & 0x07) << 18) |
-			  ((s[1] & 0x3F) << 12) |
-			  ((s[2] & 0x3F) << 6) |
-			   (s[3] & 0x3F);
-
-		return 4;
-	}
-
-	return -1;	
+	*cp = codepoint;
+	return (int) length;
 }
 
 size_t utf8_to_u32

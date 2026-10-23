@@ -165,6 +165,24 @@ In addition to those presented above, the editor has several other features, suc
 - The `find` functions accept regular expressions
 - goto-definition operations etc (see [gotod](scripts/gotod.sh))
 
+## Tests
+
+Run the unit tests with:
+
+```bash
+make test
+```
+
+The sanitizer build runs the same tests with AddressSanitizer and UBSan:
+
+```bash
+make test-sanitize
+```
+
+The tests cover `Result`, UTF-8 decoding, and file I/O without launching the
+interactive editor. They create and remove their fixtures in a temporary
+directory.
+
 ## Installation
 
 ### Dependencies

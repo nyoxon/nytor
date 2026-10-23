@@ -803,7 +803,7 @@ static void handle_syntax
 }
 
 int config_load_specific_theme(struct config* config, const char* theme) {
-	if (strcmp(theme, "") == 0) {
+	if (!theme || strlen(theme) == 0) {
 		return -1;
 	}
 	
@@ -1435,7 +1435,7 @@ int config_load(struct config* config) {
 	char path[PATH_MAX_LENGTH];
 
 	if (make_config_path(path, PATH_MAX_LENGTH) < 0) {
-		return -2;
+		return -1;
 	}
 
 	FILE* file = fopen(path, "r");

@@ -75,7 +75,7 @@ static void get_dir_content(DIR* dir, Vector* content) {
 
 	while ((entry = readdir(dir)) != NULL) {
 		if (strcmp(entry->d_name, ".") == 0 ||
-			strcmp(entry->d_name, "..") == 0) 
+			strcmp(entry->d_name, "..") == 0)
 		{
 			continue;
 		}
@@ -145,7 +145,7 @@ static WindowResult on_select_open_file(void* userdata) {
 		vector_push(&editor->window.content, &cwd);
 
 		if (strcmp(path, "/") == 0 ||
-			strcmp(actual_dir, "/") != 0) 
+			strcmp(actual_dir, "/") != 0)
 		{
 			u32string parent = u32string_from("..");
 			vector_push(&editor->window.content, &parent);
@@ -269,10 +269,10 @@ typedef enum {
 
 static int find_action
 (
-	Editor* editor, 
-	const u32string* pattern, 
+	Editor* editor,
+	const u32string* pattern,
 	FindFlag flag
-) 
+)
 {
 	switch (flag) {
 	case FIND_ONE: {
@@ -307,8 +307,8 @@ static int find_action
 
 		Vector matches;
 		vector_init(
-			&matches, 
-			sizeof(u32string), 
+			&matches,
+			sizeof(u32string),
 			u32string_destructor
 		);
 
@@ -324,10 +324,10 @@ static int find_action
 			size_t pos = 0;
 
 			while ((index = u32string_find(
-							text, 
-							pos, 
-							size, 
-							pattern)) >= 0) 
+							text,
+							pos,
+							size,
+							pattern)) >= 0)
 			{
 				char line[i];
 				sprintf(line, "%zu", (size_t) i + 1);
@@ -355,7 +355,7 @@ static int find_action
 					? index - offset
 					: 0;
 
-				size_t right = 
+				size_t right =
 				((size_t) index + pattern_size + offset >= size)
 					? size
 					: index + pattern_size + offset;
@@ -389,7 +389,7 @@ static int find_action
 		editor->has_window = 1;
 		editor->window.content = matches;
 
-		return 1;		
+		return 1;
 	}
 
 	default:
@@ -402,9 +402,9 @@ static int find_action
 
 
 // --- SAVE ---
-const cmd save = { 
-	.name = "save", 
-	.description = 
+const cmd save = {
+	.name = "save",
+	.description =
 		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨\n"
 		"Name: save\n"
 		"------------------------------------------------------------------\n"
@@ -422,7 +422,7 @@ const cmd save = {
 // --- SAVEAS ---
 const cmd saveas = {
 	.name = "saveas",
-	.description = 
+	.description =
 		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨\n"
 		"Name: saveas\n"
 		"------------------------------------------------------------------\n"
@@ -452,7 +452,7 @@ const cmd saveas = {
 // --- QUIT ---
 const cmd quit = {
 	.name = "quit",
-	.description = 
+	.description =
 		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨\n"
 		"Name: quit\n"
 		"------------------------------------------------------------------\n"
@@ -478,7 +478,7 @@ const cmd quit = {
 // --- QUITS ---
 const cmd quits = {
 	.name = "quits",
-	.description = 
+	.description =
 		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨\n"
 		"Name: quits\n"
 		"------------------------------------------------------------------\n"
@@ -497,7 +497,7 @@ const cmd quits = {
 
 const cmd quit_forced = {
 	.name = "quit!",
-	.description = 
+	.description =
 		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨\n"
 		"Name: quit!\n"
 		"------------------------------------------------------------------\n"
@@ -511,7 +511,7 @@ const cmd quit_forced = {
 // --- NEXT ---
 const cmd next = {
 	.name = "next",
-	.description = 
+	.description =
 		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨\n"
 		"Name: next\n"
 		"------------------------------------------------------------------\n"
@@ -530,7 +530,7 @@ const cmd next = {
 // --- PREV ---
 const cmd prev = {
 	.name = "prev",
-	.description = 
+	.description =
 		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨\n"
 		"Name: prev\n"
 		"------------------------------------------------------------------\n"
@@ -582,7 +582,7 @@ const cmd newas = {
 		"If there is a space character inside the filename, use quotation marks \n"
 		"\" \" to delimit the filename itself. If there isn't, the use of quotation\n"
 		"marks is optional. In order to pass a filename with spaces and that contains \n"
-		"a \", you must escape that \" using \\ .\n\n"		
+		"a \", you must escape that \" using \\ .\n\n"
 		" ---- BEHAVIOR ----\n\n"
 		"(1) The created file must still be saved to actually exist on the\n"
 		"user's system.\n\n"
@@ -598,7 +598,7 @@ const cmd newas = {
 // --- CLOSE ---
 const cmd close_cmd = { // man 2 close
 	.name = "close",
-	.description = 
+	.description =
 		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨\n"
 		"Name: close\n"
 		"------------------------------------------------------------------\n"
@@ -631,7 +631,7 @@ const cmd close_cmd = { // man 2 close
 // --- CLOSE! ---
 const cmd close_forced = {
 	.name = "close!",
-	.description = 
+	.description =
 		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨\n"
 		"Name: close!\n"
 		"------------------------------------------------------------------\n"
@@ -686,7 +686,7 @@ const cmd open_cmd = { // man 2 open
 // --- OPENR ---
 const cmd openr = {
 	.name = "openr",
-	.description = 
+	.description =
 		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨\n"
 		"Name: openr\n"
 		"------------------------------------------------------------------\n"
@@ -764,7 +764,7 @@ const cmd select_cmd = { // man 2 select
 // --- COPY ---
 const cmd copy = {
 	.name = "copy",
-	.description = 
+	.description =
 		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨\n"
 		"Name: copy\n"
 		"------------------------------------------------------------------\n"
@@ -812,7 +812,7 @@ const cmd indent = {
 // --- UNINDENT ---
 const cmd unindent = {
 	.name = "unindent",
-	.description =	
+	.description =
 		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨\n"
 		"Name: unindent\n"
 		"------------------------------------------------------------------\n"
@@ -991,7 +991,7 @@ const cmd prepend = {
 		"------------------------------------------------------------------\n"
 		"Errors: it is an error not to pass a 'pattern'.\n"
 		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨"
-};	
+};
 
 
 // --- UNDO ---
@@ -1053,7 +1053,7 @@ const cmd redo = {
 // --- FIND ---
 const cmd find = {
 	.name = "find",
-	.description = 
+	.description =
 		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨\n"
 		"Name: find\n"
 		"------------------------------------------------------------------\n"
@@ -1110,7 +1110,7 @@ const cmd find = {
 // --- FINDALL --
 const cmd findall = {
 	.name = "findall",
-	.description = 
+	.description =
 		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨\n"
 		"Name: findall\n"
 		"------------------------------------------------------------------\n"
@@ -1137,7 +1137,7 @@ const cmd findall = {
 // --- MATCH ---
 const cmd match = {
 	.name = "match",
-	.description = 
+	.description =
 		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨\n"
 		"Name: match\n"
 		"------------------------------------------------------------------\n"
@@ -1222,7 +1222,7 @@ const cmd goto_cmd = {
 // --- SET ---
 const cmd set = {
 	.name = "set",
-	.description = 
+	.description =
 		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨\n"
 		"Name: set\n"
 		"------------------------------------------------------------------\n"
@@ -1288,7 +1288,7 @@ const cmd terminal = {
 // --- SHELL ---
 const cmd shell = { // man 3 system
 	.name = "shell",
-	.description = 
+	.description =
 		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨\n"
 		"Name: shell\n"
 		"------------------------------------------------------------------\n"
@@ -1354,7 +1354,7 @@ const cmd show = {
 // --- FILES ---
 const cmd files = {
 	.name = "files",
-	.description = 
+	.description =
 		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨\n"
 		"Name: files\n"
 		"------------------------------------------------------------------\n"
@@ -1378,7 +1378,7 @@ const cmd files = {
 // --- SUSPEND ---
 const cmd suspend = {
 	.name = "suspend",
-	.description = 
+	.description =
 		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨\n"
 		"Name: suspend\n"
 		"------------------------------------------------------------------\n"
@@ -1397,7 +1397,7 @@ const cmd suspend = {
 // --- BLOCK ---
 const cmd block = {
 	.name = "block",
-	.description = 
+	.description =
 		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨\n"
 		"Name: block\n"
 		"------------------------------------------------------------------\n"
@@ -1449,7 +1449,7 @@ const cmd themes = {
 // --- SYNC ---
 const cmd sync_cmd = {
 	.name = "sync",
-	.description = 
+	.description =
 		"¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨\n"
 		"Name: sync\n"
 		"------------------------------------------------------------------\n"
@@ -1473,7 +1473,7 @@ const cmd lua = {
 		"Name: lua\n"
 		"------------------------------------------------------------------\n"
 		"Args: path_to_script (required)\n"
-		"------------------------------------------------------------------\n"		
+		"------------------------------------------------------------------\n"
 		"Action: call a Lua script\n"
 		"------------------------------------------------------------------\n"
 		"More:\n\n"
@@ -1487,7 +1487,7 @@ const cmd lua = {
 // --- HELP ---
 const cmd help = {
 	.name = "help",
-	.description = 
+	.description =
 		"This is the manual page for the nytor prompt commands.\n\n"
 		"To see what a command does, run \"help command\" at the prompt\n"
 		"or \"help\" at prompt and select the desired command.\n\n"
@@ -1825,7 +1825,7 @@ static void handle_help(Editor* editor, char* words[], size_t n) {
 
 		editor_create_internal_file(editor, buf, &cb);
 
-		clipboard_free(&cb);		
+		clipboard_free(&cb);
 	}
 }
 
@@ -1888,8 +1888,8 @@ static int words_to_u8string
 		char tmp[512];
 
 		int valid = parse_quoted(
-			joined_args, 
-			tmp, 
+			joined_args,
+			tmp,
 			sizeof(tmp));
 
 		free(joined_args);
@@ -1914,7 +1914,7 @@ static int words_to_u8string
 
 		*string = strdup(tmp);
 		return 0;
-	}	
+	}
 }
 
 
@@ -1924,7 +1924,7 @@ static void run_extern_command
 	Editor* editor,
 	const char* cmd,
 	Clipboard* cb
-) 
+)
 {
 	FILE* fp = popen(cmd, "r");
 	char buffer[4096];
@@ -1964,11 +1964,11 @@ static void run_extern_command
 
 	if (cb &&
 		!u32string_is_empty(&cb->text) &&
-		u32string_char(&cb->text, u32string_size(&cb->text) - 1) == 
-		U'\n') 
+		u32string_char(&cb->text, u32string_size(&cb->text) - 1) ==
+		U'\n')
 	{
 		u32string_remove(
-			&cb->text, 
+			&cb->text,
 			u32string_size(&cb->text) - 1,
 			NULL);
 	}
@@ -1980,9 +1980,9 @@ static void run_extern_command
 // --- EDITOR_HANDLE_CMD --- aka THE MONSTER
 int editor_handle_cmd
 (
-	Editor* editor, 
+	Editor* editor,
 	const u32string* u32_cmd
-) 
+)
 {
 	char* cmd = u32string_into_u8(u32_cmd);
 
@@ -2005,35 +2005,39 @@ int editor_handle_cmd
 	if (n > 0 && strcmp(words[0], "lua") == 0) {
 		if (n < 2) {
 			prompt_init(
-				&editor->status_bar, 
-				PROMPT_INSUFFICIENT_ARGS, 
+				&editor->status_bar,
+				PROMPT_INSUFFICIENT_ARGS,
 				PT_INFO);
-		} 
-		
+		}
+
 		else {
 			char error[512];
-			
+
 			if (lua_plugin_run(
-					editor, 
-					words[1], 
-					error, 
+					editor,
+					words[1],
+					error,
 					sizeof(error)) < 0)
 			{
 				prompt_init(
-					&editor->status_bar, 
-					error, 
+					&editor->status_bar,
+					error,
 					PT_INFO
 				);
 			}
 		}
-		
+
 		goto cleanup;
 	}
 
 
 	/// --- SAVE ---
 	if (strcmp(words[0], save.name) == 0) {
-		editor_save_file(editor, editor->actual_file_index);
+		editor_save_file(
+			editor,
+			editor->actual_file_index,
+			NULL
+		);
 
 		goto cleanup;
 	}
@@ -2058,15 +2062,15 @@ int editor_handle_cmd
 					PROMPT_READONLY,
 					PT_INFO);
 
-				goto cleanup;				
+				goto cleanup;
 			}
-			
+
 			const char* new_name = words[1];
 
 			ssize_t index = editor_has_file(editor, new_name);
 
 			if (index >= 0 &&
-				(size_t) index != editor->actual_file_index) 
+				(size_t) index != editor->actual_file_index)
 			{
 				// MAYBE: it may also be possible to close the
 				// existing file instead returning an error
@@ -2112,20 +2116,20 @@ int editor_handle_cmd
 
 					goto cleanup;
 				}
-				
+
 				file_set_name(
 					&editor->actual_file->file,
 					new_name,
 					1
 				);
 
-				editor_save_file(editor, editor->actual_file_index);
+				editor_save_file(editor, editor->actual_file_index, NULL);
 
 				editor_prompt_init(editor);
 
 				file_set_all_lines_dirty(&editor->actual_file->file);
 
-				goto cleanup;		
+				goto cleanup;
 			}
 
 			// create a new file
@@ -2135,7 +2139,12 @@ int editor_handle_cmd
 				1
 			);
 
-			editor_save_file(editor, editor->actual_file_index);
+			editor_save_file(
+				editor,
+				editor->actual_file_index,
+				NULL
+			);
+
 			editor_prompt_init(editor);
 
 			file_set_has_dirty_line(&editor->actual_file->file);
@@ -2172,7 +2181,9 @@ int editor_handle_cmd
 			}
 
 			if (ef->file.dirty && ef->file.filename) {
-				file_save(&ef->file, &editor->result);
+				if (editor_save_file(editor, i, NULL) < 0) {
+					return 0;
+				}
 			}
 		}
 
@@ -2205,7 +2216,7 @@ int editor_handle_cmd
 				PROMPT_INVALID_COMMAND,
 				PT_INFO);
 
-			goto cleanup;	
+			goto cleanup;
 		}
 
 		int flag = (strlen(words[0]) > strlen(find.name))
@@ -2271,9 +2282,9 @@ int editor_handle_cmd
 				PROMPT_INVALID_ARG,
 				PT_INFO
 			);
-			
+
 			goto cleanup;
-			
+
 			// int ret = words_to_u8string(
 			// 	editor,
 			// 	words + 1,
@@ -2315,8 +2326,8 @@ int editor_handle_cmd
 			goto cleanup;
 		}
 
-		size_t y = (numb == 0 || (size_t) numb > lines) 
-			? lines - 1 
+		size_t y = (numb == 0 || (size_t) numb > lines)
+			? lines - 1
 			: (size_t) numb - 1;
 
 		editor_cursor_move(editor,
@@ -2391,7 +2402,7 @@ int editor_handle_cmd
 
 		editor_create_new_file(editor, 0);
 		editor->actual_file->internal = 0;
-		
+
 		file_set_name(
 			&editor->actual_file->file,
 			path,
@@ -2507,7 +2518,7 @@ int editor_handle_cmd
 					PT_INFO
 				);
 
-				goto cleanup;			
+				goto cleanup;
 			}
 
 			openas_readonly = 1;
@@ -2544,8 +2555,8 @@ int editor_handle_cmd
 
 			Vector content;
 			vector_init(
-				&content, 
-				sizeof(u32string), 
+				&content,
+				sizeof(u32string),
 				u32string_destructor
 			);
 
@@ -2566,7 +2577,7 @@ int editor_handle_cmd
 				.sh = 0.5,
 				.tsize = editor->tsize,
 				.tab_size = editor->actual_file->file.tab_size,
-				.on_select = on_select_open_file				
+				.on_select = on_select_open_file
 			};
 
 			editor->window = window_new(&options);
@@ -2652,8 +2663,8 @@ int editor_handle_cmd
 				goto cleanup;
 			}
 
-			if (numb < 0 || 
-				(size_t) numb > file_num_lines(&editor->actual_file->file)) 
+			if (numb < 0 ||
+				(size_t) numb > file_num_lines(&editor->actual_file->file))
 			{
 				prompt_init(
 					&editor->status_bar,
@@ -2697,7 +2708,7 @@ int editor_handle_cmd
 					PT_INFO
 				);
 
-				goto cleanup;			
+				goto cleanup;
 			}
 
 			long y2 = strtol(words[3], &end, 10);
@@ -2709,7 +2720,7 @@ int editor_handle_cmd
 					PT_INFO
 				);
 
-				goto cleanup;			
+				goto cleanup;
 			}
 
 			if (y1 < 0 || y2 < 0 ||
@@ -2722,7 +2733,7 @@ int editor_handle_cmd
 					PT_INFO
 				);
 
-				goto cleanup;			
+				goto cleanup;
 			}
 
 			editor->sel.active = 1;
@@ -2734,7 +2745,7 @@ int editor_handle_cmd
 
 			size_t index2 = (y2 == 0)
 				? file_num_lines(&editor->actual_file->file) - 1
-				: (size_t) y2 - 1;				
+				: (size_t) y2 - 1;
 
 			if (index1 < index2) {
 				size_t y2_size = file_size_line(
@@ -2881,7 +2892,7 @@ int editor_handle_cmd
 		}
 
 		u32string_free(&pattern);
-		goto cleanup;				
+		goto cleanup;
 	}
 
 	/// --- APPEND ---
@@ -3031,7 +3042,7 @@ int editor_handle_cmd
 					free(cmd);
 					free(joined_text);
 					u32string_free(&pattern);
-					return 0;						
+					return 0;
 				}
 
 				text = u32string_from(tmp);
@@ -3162,7 +3173,7 @@ int editor_handle_cmd
 				editor,
 				&pattern,
 				&text);
-		
+
 			u32string_free(&pattern); u32string_free(&text);
 			goto cleanup;
 		}
@@ -3188,7 +3199,7 @@ int editor_handle_cmd
 				editor,
 				&pattern,
 				&text);
-		
+
 			u32string_free(&pattern); u32string_free(&text);
 
 			goto cleanup;
@@ -3255,13 +3266,13 @@ int editor_handle_cmd
 				PT_INFO
 			);
 
-			goto cleanup;			
+			goto cleanup;
 		}
 
 		const char* arg = words[1];
 
 		if (strcmp(arg, "spaces") == 0) {
-			editor->actual_file->file.use_spaces = 
+			editor->actual_file->file.use_spaces =
 				!editor->actual_file->file.use_spaces;
 
 			goto cleanup;
@@ -3304,12 +3315,12 @@ int editor_handle_cmd
 					PT_INFO
 				);
 
-				goto cleanup;			
+				goto cleanup;
 			}
 
 			const char* value = words[2];
 
-			if (strcmp(value, "readonly") == 0) 
+			if (strcmp(value, "readonly") == 0)
 			{
 				editor_file_set_readonly(
 					editor->actual_file);
@@ -3317,7 +3328,7 @@ int editor_handle_cmd
 				goto cleanup;
 			}
 
-			if (strcmp(value, "writeable") == 0) 
+			if (strcmp(value, "writeable") == 0)
 			{
 				if (editor_file_set_writeable(
 					editor->actual_file) < 0)
@@ -3338,7 +3349,7 @@ int editor_handle_cmd
 				PT_INFO
 			);
 
-			goto cleanup;			
+			goto cleanup;
 		}
 
 		if (strcmp(arg, "indent") == 0) {
@@ -3410,7 +3421,7 @@ int editor_handle_cmd
 
 				goto cleanup;
 			}
-			
+
 			editor->actual_file->tokenized = 1;
 			editor_create_syntax(editor);
 
@@ -3456,9 +3467,9 @@ int editor_handle_cmd
 				PT_INFO
 			);
 
-			goto cleanup;			
+			goto cleanup;
 		}
-		
+
 		Clipboard cb = clipboard_new();
 
 		run_extern_command(
@@ -3468,18 +3479,35 @@ int editor_handle_cmd
 		);
 
 		free(command);
-		
+
 		editor_create_new_file(editor, 0);
 
-		file_paste_clipboard(
+		Result result;
+		result_init(&result);
+
+		int paste_ret = file_paste_clipboard(
 			&editor->actual_file->file,
 			&cb,
 			&editor->cursor,
-			&editor->result
+			&result
 		);
-	
+
+		if (paste_ret < 0) {
+			prompt_init(
+				&editor->status_bar,
+				result_reason(&result),
+				PT_INFO
+			);
+
+			result_free(&result);
+			clipboard_free(&cb);
+			goto cleanup;
+		}
+
+		result_free(&result);
+
 		// editor_cursor_move(editor, POS_ZERO);
-		
+
 		editor->actual_file->file.dirty = 1;
 		// editor->actual_file->file.has_dirty_line = 0;
 		file_set_name(
@@ -3487,12 +3515,12 @@ int editor_handle_cmd
 			"shell_output",
 			0
 		);
-		
+
 		editor->actual_file->new_file = 1;
 		editor->actual_file->internal = 0;
-		
+
 		editor_prompt_init(editor);
-		
+
 		clipboard_free(&cb);
 
 		goto cleanup;
@@ -3508,7 +3536,7 @@ int editor_handle_cmd
 				PT_INFO
 			);
 
-			goto cleanup;	
+			goto cleanup;
 		}
 
 		const char* arg = words[1];
@@ -3591,26 +3619,26 @@ int editor_handle_cmd
 
 			if (ef->type == EDITOR_FILE_PROTOTYPE) {
 				assert(ef->proto_data.options.path != NULL);
-				
+
 				char filename[PATH_MAX_LENGTH];
-				
+
 				get_filename_after_last_slash(
 					filename,
 					ef->proto_data.options.path
 				);
-				
+
 				ssize_t index = editor_has_equal_filename(
 					editor,
 					filename,
 					i
 				);
-				
+
 				if (index >= 0) {
 					name = u32string_from(
 						ef->proto_data.options.path
 					);
 				}
-				
+
 				else {
 					name = u32string_from(filename);
 				}
@@ -3623,11 +3651,11 @@ int editor_handle_cmd
 						ef->file.filename,
 						i
 					);
-					
+
 					if (index >= 0) {
 						name = u32string_from(ef->file.path);
 					}
-					
+
 					else {
 						name = u32string_from(ef->file.filename);
 					}
@@ -3641,7 +3669,7 @@ int editor_handle_cmd
 			vector_push(&editor->window.content, &name);
 		}
 
-		goto cleanup;		
+		goto cleanup;
 	}
 
 
@@ -3722,21 +3750,21 @@ int editor_handle_cmd
 		if (!dir) {
 			snprintf(path, sizeof(path), "%s/themes", NYTOR_DATADIR);
 			dir = opendir(path);
-			
+
 			if (!dir) {
 				snprintf(path, sizeof(path), "/usr/share/nytor/themes");
 				dir = opendir(path);
-				
+
 				if (!dir) {
 					prompt_init(
 						&editor->status_bar,
 						strerror(errno),
 						PT_INFO
 					);
-		
+
 					window_close(&editor->window);
 					editor->has_window = 0;
-		
+
 					goto cleanup;
 				}
 			}
@@ -3765,14 +3793,26 @@ int editor_handle_cmd
 	/// --- SYNC ---
 	if (strcmp(words[0], sync_cmd.name) == 0) {
 		if (!editor->actual_file->new_file) {
-			editor_file_sync(
+			Result result;
+			result_init(&result);
+
+			int ret = editor_file_sync(
 				editor->actual_file,
-				&editor->result
+				&result
 			);
 
-			if (editor->result.type == ERROR_OK) {
+			if (ret >= 0) {
 				editor->cursor.pos = POS_ZERO;
 			}
+			else {
+				prompt_init(
+					&editor->status_bar,
+					result_reason(&result),
+					PT_INFO
+				);
+			}
+
+			result_free(&result);
 		}
 
 		else {
@@ -3786,7 +3826,7 @@ int editor_handle_cmd
 		goto cleanup;
 	}
 
-	
+
 	/// --- HELP ---
 	if (strcmp(words[0], help.name) == 0) {
 		handle_help(editor, words, n);
@@ -3800,13 +3840,18 @@ int editor_handle_cmd
 	if (lua_plugin_find(words[0], plugin_path, sizeof(plugin_path))) {
 		char error[512];
 
-		if (lua_plugin_run(editor, plugin_path, error, sizeof(error)) < 0) {
+		if (lua_plugin_run(
+			editor,
+			plugin_path,
+			error,
+			sizeof(error)) < 0)
+		{
 			prompt_init(&editor->status_bar, error, PT_INFO);
 		}
 
 		goto cleanup;
 	}
-	
+
 
 	prompt_init(
 		&editor->status_bar,

@@ -1,7 +1,7 @@
 -- move the cursor to the end of the first longest line in the current file.
 -- line and column numbers passed to the API start at 1.
 
-local line_count = nyt.line_count()
+local line_count = nyt.line_count(nyt.current_file())
 
 local max_line = 1
 local max_line_length = nyt.line_length(1)

@@ -56,8 +56,12 @@ PLUGINS := $(patsubst $(PLUGIN_SRC_DIR)/%.c,$(PLUGIN_BUILD_DIR)/%.so,$(PLUGIN_SR
 TARGET  := nyt
 TARGET_DEBUG := nyt_debug
 TARGET_SANITIZE := nyt_sanitize
+TARGET_TEST := build/test_runner
+TARGET_TEST_SANITIZE := build/test_runner_sanitize
+TARGET_TEST_INTEGRATION := build/nyt_integration
 
 SRCS := $(shell find $(SRC_DIR) -name '*.c')
+TEST_SRCS := $(filter-out $(SRC_DIR)/main.c,$(SRCS)) $(shell find tests -name '*.c' 2>/dev/null)
 
 OBJS := $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SRCS))
 OBJS_DEBUG := $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR_DEBUG)/%.o,$(SRCS))
@@ -108,6 +112,29 @@ $(TARGET_SANITIZE): $(OBJS_SANITIZE)
 $(OBJ_DIR_SANITIZE)/%.o: $(SRC_DIR)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS_SANITIZE) -c $< -o $@
+
+test: $(TARGET_TEST)
+	./$(TARGET_TEST)
+
+$(TARGET_TEST): $(TEST_SRCS)
+	@mkdir -p $(BIN_DIR)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(TEST_SRCS) -o $@ $(LDFLAGS)
+
+test-sanitize: $(TARGET_TEST_SANITIZE)
+	./$(TARGET_TEST_SANITIZE)
+
+$(TARGET_TEST_SANITIZE): $(TEST_SRCS)
+	@mkdir -p $(BIN_DIR)
+	$(CC) $(CPPFLAGS) $(CFLAGS_SANITIZE) $(TEST_SRCS) -o $@ $(LDFLAGS) $(LDFLAGS_SANITIZE)
+
+test-integration: $(TARGET_TEST_INTEGRATION)
+	python3 tests/integration_editor.py ./$(TARGET_TEST_INTEGRATION)
+
+$(TARGET_TEST_INTEGRATION): $(SRCS)
+	@mkdir -p $(BIN_DIR)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(SRCS) -o $@ $(LDFLAGS)
+
+test-all: test test-integration
 
 plugins: $(PLUGINS)
 
@@ -181,4 +208,5 @@ freebsd-pkg: sync-version
 -include $(DEPS_DEBUG)
 -include $(DEPS_SANITIZE)
 
-.PHONY: all clean sync-version check-version freebsd-pkg
+.PHONY: all clean sync-version check-version freebsd-pkg test test-sanitize \
+	test-integration test-all

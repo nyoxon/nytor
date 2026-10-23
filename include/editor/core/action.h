@@ -25,7 +25,7 @@ int editor_create_internal_file
 	Clipboard* content
 );
 
-void editor_open_file
+int editor_open_file
 (
 	Editor* editor, 
 	const char* filename,
@@ -42,7 +42,7 @@ void editor_handle_modified(Editor* editor);
 void editor_handle_attrib_changed(Editor* editor);
 
 
-int editor_save_file(Editor* editor, size_t index);
+int editor_save_file(Editor* editor, size_t index, Result* result);
 int editor_quit(Editor* editor);
 
 
@@ -55,6 +55,7 @@ void editor_select_word(Editor* editor);
 
 
 int editor_copy_selection(Editor* editor);
+int editor_insert_clipboard(Editor* editor, const Clipboard* cb);
 int editor_paste_clipboard(Editor* editor);
 
 
@@ -89,7 +90,7 @@ void editor_operation_linemove(Editor* editor, Operation* op);
 
 int editor_insert_char(Editor* editor, uint32_t c);
 int editor_insert_tab(Editor* editor);
-int editor_insert_newline(Editor* editor);
+int editor_insert_newline(Editor* editor, int ignore_auto_indent);
 
 
 int editor_delete_char_or_selection
@@ -181,5 +182,7 @@ void editor_match(Editor* editor);
 
 void editor_undo(Editor* editor);
 void editor_redo(Editor* editor);
+
+int editor_open_config_file(Editor* editor);
 
 #endif

@@ -246,7 +246,7 @@ int editor_handle_normal_input(Editor* editor, struct normal_key key) {
 	}
 
 	if (content == U'\n' || content == U'\r') {
-		ret = editor_insert_newline(editor);
+		ret = editor_insert_newline(editor, 0);
 
 		if (ret == EIE_FATAL_ERROR) {
 			return 0;
@@ -261,7 +261,7 @@ int editor_handle_normal_input(Editor* editor, struct normal_key key) {
 	}
 
 	if (normal_key_equal(&key, &editor->config.keybinds[ACTION_SAVE])) {
-		ret = editor_save_file(editor, editor->actual_file_index);
+		ret = editor_save_file(editor, editor->actual_file_index, NULL);
 
 		if (ret == EIE_FATAL_ERROR) {
 			return 0;

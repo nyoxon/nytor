@@ -200,7 +200,7 @@ use_autocomplete = false
 
 # examples:
 # save = "none"
-# quit = "ctrl + g"
+# quit = "ctrl+g"
 
 
 

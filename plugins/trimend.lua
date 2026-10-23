@@ -1,8 +1,8 @@
--- remove trailing spaces and tabs 
+-- remove trailing spaces and tabs
 -- from every line in the current file.
 -- the cursor is left at the end of the final line.
 
-local lines = nyt.line_count()
+local lines = nyt.line_count(nyt.current_file())
 local removed = 0
 
 for y = 1, lines do
@@ -13,8 +13,8 @@ for y = 1, lines do
 		-- spaces and tabs are single-byte characters.
 		local count = #trailing
 		local length = nyt.line_length(y)
-		
-		-- delete_right removes from the cursor 
+
+		-- delete_right removes from the cursor
 		-- through the end of this line.
 		nyt.set_cursor(length - count + 1, y)
 		nyt.delete_right()

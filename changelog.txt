@@ -19,7 +19,35 @@ of the program being called.
 
 ADDED: FreeBSD port (kqueue + specific headers + pkg)
 
+ADDED: scripts that synchronize the program version
+with the files that depend on it
+
+ADDED: `make install` now also compiles the plugins
+
 ADDED: some extra verifications about colors inside the
 terminal.
 
-CHANGE: Compilation with Make is now smarter
+
+
+22/10/26
+
+CHANGE: improved the use of `Result` and error propagation
+
+ADDED: beginning the creation of unit tests
+
+BUGFIX: changing the tabsize when use_spaces is disabled
+did not alter the visual representation of the tab
+
+ADDED: few new functions to LUA API
+
+ADDED: some more LUA scripts
+
+
+
+23/10/26
+
+ADDED: `--config` option
+
+ADDED: few new functions to LUA API
+
+ADDED: some more LUA scripts

@@ -174,7 +174,7 @@ void file_recalculate_tokens
 
 
 // reopen a file
-void file_sync
+int file_sync
 (
 	File* file, 
 	Result* result
@@ -291,7 +291,7 @@ int file_copy_selection
 (
 	const File* file, 
 	Clipboard* cb, 
-	Selection* sel,
+	const Selection* sel,
 	Result* result
 );
 
@@ -346,7 +346,7 @@ size_t file_num_lines
 
 size_t file_size_line
 (
-	File* file,
+	const File* file,
 	size_t y
 );
 

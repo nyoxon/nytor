@@ -107,6 +107,10 @@ typedef struct {
 	// pushes an integer onto the top of the stack
 	void (*pushinteger)(lua_State*, long long);
 	
+
+	// pushes a bool onto the top of the stack
+	void (*pushboolean)(lua_State*, int);
+
 	
 	// pushes an string onto the top of the stack
 	const char* (*pushstring)(lua_State*, const char*);
@@ -420,6 +424,7 @@ static int lua_api_load(LuaApi* api) {
 	LOAD(tointegerx, "lua_tointegerx");
 	LOAD(toboolean, "lua_toboolean");
 	LOAD(pushinteger, "lua_pushinteger");
+	LOAD(pushboolean, "lua_pushboolean");
 	LOAD(pushstring, "lua_pushstring");
 	LOAD(tolstring, "lua_tolstring");
 	LOAD(touserdata, "lua_touserdata");
@@ -759,6 +764,7 @@ static int api_close_file(lua_State* state) {
 	{
 		return push_result(ctx, state, -1);
 	}
+
 	if (force) {
 		editor_close_file_forced(ctx->editor, (size_t) index - 1);
 	}
@@ -808,7 +814,7 @@ static int api_save_file(lua_State* state) {
 	return push_result(
 		ctx, 
 		state, 
-		editor_save_file(ctx->editor, file_index)
+		editor_save_file(ctx->editor, file_index, NULL)
 	);
 }
 
@@ -920,7 +926,7 @@ static int api_select_range(lua_State* state) {
 
 
 // calls editor_start_and_create_selection
-// start_seleciton(void) -> void
+// start_selection(void) -> void
 static int api_start_selection(lua_State* state) {
 	LuaContext* ctx = context(state);
 	if (!ctx->editor->sel.active)
@@ -1049,14 +1055,16 @@ static int api_delete_right(lua_State* state) {
 
 
 // insert a newline at the cursor's position
-// insert_newline(void) -> integer
+// insert_newline(ignore_auto_indent: bool) -> integer
 static int api_insert_newline(lua_State* state) {
 	LuaContext* ctx = context(state);
+
+	int ignore = boolean_arg(ctx, state, 1);
 	
 	return push_result(
 		ctx, 
 		state, 
-		editor_insert_newline(ctx->editor)
+		editor_insert_newline(ctx->editor, ignore)
 	);
 }
 
@@ -1283,18 +1291,39 @@ static int api_scroll(lua_State* state) {
 }
 
 
-// number of lines of the actual file
-// line_count(void) -> integer
-
-// obs: line_count is always >= 1
-// a file is empty if only if
-// line_count == 1 and line_length == 0
+// number of lines of the file
+// line_count(index: integer) -> integer
 static int api_line_count(lua_State* state) {
 	LuaContext* ctx = context(state);
+
+	int valid = 0;
+	long long number = integer_arg(ctx, state, 1, &valid);
+	
+	Vector* files = &ctx->editor->files;
+	
+	if (!valid || 
+		number < 1 || 
+		(unsigned long long) number > files->size) 
+	{
+		ctx->api->pushboolean(state, 0);
+		
+		return 1;
+	}
+
+	const EditorFile* ef = vector_get_const(
+		files,
+		number - 1
+	);
+
+	if (ef->type == EDITOR_FILE_PROTOTYPE) {
+		ctx->api->pushinteger(state, -1);
+
+		return 1;
+	}
 	
 	ctx->api->pushinteger(
 		state, 
-		(long long) ctx->editor->actual_file->file.lines.size
+		(long long) ef->file.lines.size
 	);
 	
 	return 1;
@@ -1388,29 +1417,1244 @@ static int api_insert(lua_State* state) {
 	
 	const char* value = ctx->api->tolstring(state, 1, NULL);
 	
-	if (!value) {
+	if (!value || strlen(value) == 0) {
 		return 0;
 	}
-	
-	u32string text = u32string_from(value);
-	
-	int ret = 0;
-	
-	for (size_t i = 0; i < text.text.size; i++) {
-		uint32_t* ch = vector_get(&text.text, i);
-		ret = editor_insert_char(ctx->editor, *ch);
-		
-		if (ret < 0) {
-			break;
-		}
-	}
-	
-	u32string_free(&text);
+
+	Editor* editor = ctx->editor;
+
+	Clipboard cb = clipboard_new();
+	cb.text = u32string_from(value);
+
+	int ret = editor_insert_clipboard(
+		editor,
+		&cb
+	);
+
+	clipboard_free(&cb);
 	
 	return push_result(ctx, state, ret);
-
 }
 
+
+// get the filename of a file
+
+// filename(index: integer) -> string
+// return the pathname if the file is a prototype
+static int api_filename(lua_State* state) {
+	LuaContext* ctx = context(state);
+
+	int valid = 0;
+	long long number = integer_arg(ctx, state, 1, &valid);
+	
+	Vector* files = &ctx->editor->files;
+	
+	if (!valid || 
+		number < 1 || 
+		(unsigned long long) number > files->size) 
+	{
+		ctx->api->pushstring(state, "");
+		
+		return 1;
+	}
+
+	const EditorFile* ef = vector_get_const(
+		files,
+		number - 1
+	);
+
+	if (ef->type == EDITOR_FILE_PROTOTYPE) {
+		const char* pathname = ef->proto_data.options.path;
+
+		ctx->api->pushstring(state, pathname ? pathname : "");
+
+		return 1;
+	}
+
+	const char* filename = ef->file.filename;
+
+	ctx->api->pushstring(state, filename ? filename : "");
+
+	return 1;
+}
+
+
+// get the pathname of a file
+// the pathname is relative to the editor's pwd
+
+// pathname(index: integer) -> string
+static int api_pathname(lua_State* state) {
+	LuaContext* ctx = context(state);
+
+	int valid = 0;
+	long long number = integer_arg(ctx, state, 1, &valid);
+	
+	Vector* files = &ctx->editor->files;
+	
+	if (!valid || 
+		number < 1 || 
+		(unsigned long long) number > files->size) 
+	{
+		ctx->api->pushstring(state, "");
+		
+		return 1;
+	}
+
+	const EditorFile* ef = vector_get_const(
+		files,
+		number - 1
+	);
+
+	const char* path = NULL;
+
+	if (ef->type == EDITOR_FILE_PROTOTYPE) {
+		path = ef->proto_data.options.path;
+	}
+
+	else {
+		path = ef->file.path;
+	}
+
+	ctx->api->pushstring(state, path ? path : "");
+
+	return 1;
+}
+
+
+// return whether the file is empty
+
+// is_empty(index: integer) -> bool
+// false is returned if an error occurs or
+// if the file is a prototype
+static int api_is_empty(lua_State* state) {
+	LuaContext* ctx = context(state);
+
+	int valid = 0;
+	long long number = integer_arg(ctx, state, 1, &valid);
+	
+	Vector* files = &ctx->editor->files;
+	
+	if (!valid || 
+		number < 1 || 
+		(unsigned long long) number > files->size) 
+	{
+		ctx->api->pushboolean(state, 0);
+		
+		return 1;
+	}
+
+	const EditorFile* ef = vector_get_const(
+		files,
+		number - 1
+	);
+
+	if (ef->type == EDITOR_FILE_PROTOTYPE) {
+		ctx->api->pushboolean(state, 0);
+
+		return 1;
+	}
+
+	size_t line_count = file_num_lines(&ef->file);
+
+	int is_empty = (line_count == 0);
+
+	if (is_empty) {
+		ctx->api->pushboolean(state, 1);
+
+		return 1;
+	}
+
+	size_t first_line_size = file_size_line(&ef->file, 0);
+
+	is_empty = (line_count == 1 && first_line_size == 0);
+
+	ctx->api->pushboolean(state, is_empty);
+
+	return 1;
+}
+
+
+// return whether the file is a loaded file
+// se is_prototype for more information
+
+// is_loaded(index: integer) -> bool
+static int api_is_loaded(lua_State* state) {
+	LuaContext* ctx = context(state);
+
+	int valid = 0;
+	long long number = integer_arg(ctx, state, 1, &valid);
+	
+	Vector* files = &ctx->editor->files;
+	
+	if (!valid || 
+		number < 1 || 
+		(unsigned long long) number > files->size) 
+	{
+		ctx->api->pushboolean(state, 0);
+		
+		return 1;
+	}
+
+	const EditorFile* ef = vector_get_const(
+		files,
+		number - 1
+	);
+
+	ctx->api->pushboolean(state, ef->type == EDITOR_FILE_LOADED);
+
+	return 1;	
+}
+
+
+// return whether the file is a prototype file.
+// a PROTOTYPE file is a method used to save RAM.
+// more specifically, when the editor is opened with
+// multiple files passed as arguments, only one
+// (the actual one) is fully LOADED into memory
+// the others remain in a specific state and are
+// only loaded when an operation changes the editor's `actual_file`.
+// 
+// some other points:
+// - once loaded, a file cannot return to the PROTOTYPE state
+// - only the extra files passed via command line can
+// have the PROTOTYPE state. which means that no other
+// file opened during the program's execution will be
+// a prototype
+//
+// these are the only informations we have about
+// a prototype file:
+// - its pathname
+// - if it's readonly
+// - its tab_size
+// - its use_spaces
+// - its file_watch_id (this is global, not local)
+// attempting to access any other information is
+// an error or undefined behavior
+
+// is_prototype(index: integer) -> bool
+static int api_is_prototype(lua_State* state) {
+	LuaContext* ctx = context(state);
+
+	int valid = 0;
+	long long number = integer_arg(ctx, state, 1, &valid);
+	
+	Vector* files = &ctx->editor->files;
+	
+	if (!valid || 
+		number < 1 || 
+		(unsigned long long) number > files->size) 
+	{
+		ctx->api->pushboolean(state, 0);
+		
+		return 1;
+	}
+
+	const EditorFile* ef = vector_get_const(
+		files,
+		number - 1
+	);
+
+	ctx->api->pushboolean(
+		state, 
+		ef->type == EDITOR_FILE_PROTOTYPE
+	);
+
+	return 1;	
+}
+
+// return whether the file is an internal file.
+// in addition to being special within the editor,
+// an internal file is readonly (always) and exists
+// only inside the editor.
+// the "specials" also means:
+// - you cannot save the content of an internal file
+// into disk
+// - you can't can not write to an internal file
+
+// is_internal(index: integer) -> bool
+static int api_is_internal(lua_State* state) {
+	LuaContext* ctx = context(state);
+
+	int valid = 0;
+	long long number = integer_arg(ctx, state, 1, &valid);
+	
+	Vector* files = &ctx->editor->files;
+	
+	if (!valid || 
+		number < 1 || 
+		(unsigned long long) number > files->size) 
+	{
+		ctx->api->pushboolean(state, 0);
+		
+		return 1;
+	}
+
+	const EditorFile* ef = vector_get_const(
+		files,
+		number - 1
+	);
+
+	if (ef->type == EDITOR_FILE_PROTOTYPE) {
+		ctx->api->pushboolean(state, 0);
+
+		return 1;
+	}
+
+	ctx->api->pushboolean(
+		state, 
+		ef->internal
+	);
+
+	return 1;	
+}
+
+
+// return whether the file is a new file
+// a new file is a file that exists only inside
+// the editor, and not in disk
+
+// is_new(index: integer) -> bool
+static int api_is_new(lua_State* state) {
+	LuaContext* ctx = context(state);
+
+	int valid = 0;
+	long long number = integer_arg(ctx, state, 1, &valid);
+	
+	Vector* files = &ctx->editor->files;
+	
+	if (!valid || 
+		number < 1 || 
+		(unsigned long long) number > files->size) 
+	{
+		ctx->api->pushboolean(state, 0);
+		
+		return 1;
+	}
+
+	const EditorFile* ef = vector_get_const(
+		files,
+		number - 1
+	);
+
+	if (ef->type == EDITOR_FILE_PROTOTYPE) {
+		ctx->api->pushboolean(state, 0);
+
+		return 1;
+	}
+
+	ctx->api->pushboolean(
+		state, 
+		ef->new_file
+	);
+
+	return 1;	
+}
+
+
+// return whether the file is a readonly file
+
+// is_readonly(index: integer) -> bool
+static int api_is_readonly(lua_State* state) {
+	LuaContext* ctx = context(state);
+
+	int valid = 0;
+	long long number = integer_arg(ctx, state, 1, &valid);
+	
+	Vector* files = &ctx->editor->files;
+	
+	if (!valid || 
+		number < 1 || 
+		(unsigned long long) number > files->size) 
+	{
+		ctx->api->pushboolean(state, 0);
+		
+		return 1;
+	}
+
+	const EditorFile* ef = vector_get_const(
+		files,
+		number - 1
+	);
+
+	if (ef->type == EDITOR_FILE_PROTOTYPE) {
+		ctx->api->pushboolean(
+			state, 
+			ef->proto_data.options.readonly
+		);
+
+		return 1;
+	}
+
+	ctx->api->pushboolean(
+		state, 
+		ef->readonly
+	);
+
+	return 1;	
+}
+
+
+// return whether the file was externally modified
+
+// is_ext_modified(index: integer) -> bool
+static int api_is_ext_modified(lua_State* state) {
+	LuaContext* ctx = context(state);
+
+	int valid = 0;
+	long long number = integer_arg(ctx, state, 1, &valid);
+	
+	Vector* files = &ctx->editor->files;
+	
+	if (!valid || 
+		number < 1 || 
+		(unsigned long long) number > files->size) 
+	{
+		ctx->api->pushboolean(state, 0);
+		
+		return 1;
+	}
+
+	const EditorFile* ef = vector_get_const(
+		files,
+		number - 1
+	);
+
+	if (ef->type == EDITOR_FILE_PROTOTYPE) {
+		ctx->api->pushboolean(state, 0);
+
+		return 1;
+	}
+
+	ctx->api->pushboolean(
+		state, 
+		ef->externally_modified
+	);
+
+	return 1;	
+}
+
+
+// return whether the file was externally deleted
+
+// is_ext_deleted(index: integer) -> bool
+static int api_is_ext_deleted(lua_State* state) {
+	LuaContext* ctx = context(state);
+
+	int valid = 0;
+	long long number = integer_arg(ctx, state, 1, &valid);
+	
+	Vector* files = &ctx->editor->files;
+	
+	if (!valid || 
+		number < 1 || 
+		(unsigned long long) number > files->size) 
+	{
+		ctx->api->pushboolean(state, 0);
+		
+		return 1;
+	}
+
+	const EditorFile* ef = vector_get_const(
+		files,
+		number - 1
+	);
+
+	if (ef->type == EDITOR_FILE_PROTOTYPE) {
+		ctx->api->pushboolean(state, 0);
+
+		return 1;
+	}
+
+	ctx->api->pushboolean(
+		state, 
+		ef->externally_deleted
+	);
+
+	return 1;	
+}
+
+
+// return whether the file was externally moved from
+
+// is_ext_movedfrom(index: integer) -> bool
+static int api_is_ext_movedfrom(lua_State* state) {
+	LuaContext* ctx = context(state);
+
+	int valid = 0;
+	long long number = integer_arg(ctx, state, 1, &valid);
+	
+	Vector* files = &ctx->editor->files;
+	
+	if (!valid || 
+		number < 1 || 
+		(unsigned long long) number > files->size) 
+	{
+		ctx->api->pushboolean(state, 0);
+		
+		return 1;
+	}
+
+	const EditorFile* ef = vector_get_const(
+		files,
+		number - 1
+	);
+
+	if (ef->type == EDITOR_FILE_PROTOTYPE) {
+		ctx->api->pushboolean(state, 0);
+
+		return 1;
+	}
+
+	ctx->api->pushboolean(
+		state, 
+		ef->externally_moved_from
+	);
+
+	return 1;	
+}
+
+
+// return whether the file permissions have changed
+
+// is_ext_attrib_changed(index: integer) -> bool
+static int api_is_ext_attrib_changed(lua_State* state) {
+	LuaContext* ctx = context(state);
+
+	int valid = 0;
+	long long number = integer_arg(ctx, state, 1, &valid);
+	
+	Vector* files = &ctx->editor->files;
+	
+	if (!valid || 
+		number < 1 || 
+		(unsigned long long) number > files->size) 
+	{
+		ctx->api->pushboolean(state, 0);
+		
+		return 1;
+	}
+
+	const EditorFile* ef = vector_get_const(
+		files,
+		number - 1
+	);
+
+	if (ef->type == EDITOR_FILE_PROTOTYPE) {
+		ctx->api->pushboolean(state, 0);
+
+		return 1;
+	}
+
+	ctx->api->pushboolean(
+		state, 
+		ef->externally_attrib_changed
+	);
+
+	return 1;	
+}
+
+
+// return whether the file is dirty
+
+// is_dirty(index: integer) -> bool
+static int api_is_dirty(lua_State* state) {
+	LuaContext* ctx = context(state);
+
+	int valid = 0;
+	long long number = integer_arg(ctx, state, 1, &valid);
+	
+	Vector* files = &ctx->editor->files;
+	
+	if (!valid || 
+		number < 1 || 
+		(unsigned long long) number > files->size) 
+	{
+		ctx->api->pushboolean(state, 0);
+		
+		return 1;
+	}
+
+	const EditorFile* ef = vector_get_const(
+		files,
+		number - 1
+	);
+
+	if (ef->type == EDITOR_FILE_PROTOTYPE) {
+		ctx->api->pushboolean(state, 0);
+
+		return 1;
+	}
+
+	ctx->api->pushboolean(
+		state, 
+		ef->file.dirty
+	);
+
+	return 1;
+}
+
+
+// return whether the inner file tab_size
+
+// tab_size(index: integer) -> integer
+static int api_tab_size(lua_State* state) {
+	LuaContext* ctx = context(state);
+
+	int valid = 0;
+	long long number = integer_arg(ctx, state, 1, &valid);
+
+	Vector* files = &ctx->editor->files;
+		
+	if (!valid || 
+		number < 1 || 
+		(unsigned long long) number > files->size) 
+	{
+		ctx->api->pushinteger(state, -1);
+		
+		return 1;
+	}
+
+	const EditorFile* ef = vector_get_const(
+		files,
+		number - 1
+	);
+
+	if (ef->type == EDITOR_FILE_PROTOTYPE) {
+		ctx->api->pushinteger(
+			state,
+			ef->proto_data.options.default_tab_size
+		);
+
+		return 1;
+	}
+
+	ctx->api->pushinteger(
+		state,
+		ef->file.tab_size
+	);
+
+	return 1;
+}
+
+
+// return whether the inner file use_spaces
+
+// use_spaces(index: integer) -> integer
+static int api_use_spaces(lua_State* state) {
+	LuaContext* ctx = context(state);
+
+	int valid = 0;
+	long long number = integer_arg(ctx, state, 1, &valid);
+
+	Vector* files = &ctx->editor->files;
+		
+	if (!valid || 
+		number < 1 || 
+		(unsigned long long) number > files->size) 
+	{
+		ctx->api->pushinteger(state, -1);
+		
+		return 1;
+	}
+
+	const EditorFile* ef = vector_get_const(
+		files,
+		number - 1
+	);
+
+	if (ef->type == EDITOR_FILE_PROTOTYPE) {
+		ctx->api->pushinteger(
+			state,
+			ef->proto_data.options.default_use_spaces
+		);
+
+		return 1;
+	}
+
+	ctx->api->pushinteger(
+		state,
+		ef->file.use_spaces
+	);
+
+	return 1;
+}
+
+
+// set the file as readonly
+
+// set_readonly(index: integer) -> void
+static int api_set_readonly(lua_State* state) {
+	LuaContext* ctx = context(state);
+
+	int valid = 0;
+	long long number = integer_arg(ctx, state, 1, &valid);
+
+	Vector* files = &ctx->editor->files;
+		
+	if (!valid || 
+		number < 1 || 
+		(unsigned long long) number > files->size) 
+	{
+		ctx->api->pushinteger(state, -1);
+		
+		return 1;
+	}
+
+	EditorFile* ef = vector_get(
+		files,
+		number - 1
+	);
+
+	editor_file_set_readonly(ef);
+
+	return 0;
+}
+
+
+// set the file as writeable
+
+// set_writeable(index: integer) -> integer
+static int api_set_writeable(lua_State* state) {
+	LuaContext* ctx = context(state);
+
+	int valid = 0;
+	long long number = integer_arg(ctx, state, 1, &valid);
+
+	Vector* files = &ctx->editor->files;
+		
+	if (!valid || 
+		number < 1 || 
+		(unsigned long long) number > files->size) 
+	{
+		ctx->api->pushinteger(state, -1);
+		
+		return 1;
+	}
+
+	EditorFile* ef = vector_get(
+		files,
+		number - 1
+	);
+
+	return push_result(
+		ctx,
+		state,
+		editor_file_set_writeable(ef)
+	);
+}
+
+
+
+// set the current file's tab_size
+
+// set_tab_size(tab_size: integer) -> integer
+static int api_set_tab_size(lua_State* state) {
+	LuaContext* ctx = context(state);
+
+	int valid = 0;
+	long long number = integer_arg(ctx, state, 1, &valid);
+		
+	if (!valid || number <= 0) 
+	{
+		ctx->api->pushinteger(state, -1);
+		
+		return 1;
+	}
+
+	ctx->editor->actual_file->file.tab_size = number;
+
+	return 1;
+}
+
+
+// set/unset the current file's use_spaces
+
+// set_use_spaces(void) -> void
+static int api_set_use_spaces(lua_State* state) {
+	LuaContext* ctx = context(state);
+
+	ctx->editor->actual_file->file.use_spaces = 
+		!ctx->editor->actual_file->file.use_spaces;
+
+	return 1;
+}
+
+
+// return whether the file has a lexer
+
+// has_lexer(index: integer) -> bool
+static int api_has_lexer(lua_State* state) {
+	LuaContext* ctx = context(state);
+
+	int valid = 0;
+	long long number = integer_arg(ctx, state, 1, &valid);
+
+	Vector* files = &ctx->editor->files;
+		
+	if (!valid || 
+		number < 1 || 
+		(unsigned long long) number > files->size) 
+	{
+		ctx->api->pushboolean(state, 0);
+		
+		return 1;
+	}
+
+	EditorFile* ef = vector_get(
+		files,
+		number - 1
+	);
+
+	ctx->api->pushboolean(
+		state,
+		ef->lexer != NULL
+	);
+
+	return 1;
+}
+
+
+// return whether the file has a language
+
+// file_has_language(index: integer) -> bool
+static int api_file_has_language(lua_State* state) {
+	LuaContext* ctx = context(state);
+
+	int valid = 0;
+	long long number = integer_arg(ctx, state, 1, &valid);
+
+	Vector* files = &ctx->editor->files;
+		
+	if (!valid || 
+		number < 1 || 
+		(unsigned long long) number > files->size) 
+	{
+		ctx->api->pushboolean(state, 0);
+		
+		return 1;
+	}
+
+	EditorFile* ef = vector_get(
+		files,
+		number - 1
+	);
+
+	ctx->api->pushboolean(
+		state,
+		ef->language != NULL
+	);
+
+	return 1;
+}
+
+
+// return whether the editor has a language with
+// the same name passed as argument
+
+// editor_has_language(name: string) -> bool
+static int api_editor_has_language(lua_State* state) {
+	LuaContext* ctx = context(state);
+	const char* name = string_arg(ctx, state, 1);
+
+	ctx->api->pushboolean(
+		state,
+		editor_has_language(ctx->editor, name) >= 0
+	);
+
+	return 1;
+}
+
+// change the actual file's language
+
+// set_language(name: string) -> integer
+static int api_set_language(lua_State* state) {
+	LuaContext* ctx = context(state);
+	const char* name = string_arg(ctx, state, 1);
+
+	return push_result(
+		ctx,
+		state,
+		editor_file_change_lang(
+			ctx->editor->actual_file,
+			name,
+			&ctx->editor->lang_plugins_data
+		)
+	);
+}
+
+
+// get the file's language name
+
+// language(index: integer) -> string
+static int api_language(lua_State* state) {
+	LuaContext* ctx = context(state);
+
+	int valid = 0;
+	long long number = integer_arg(ctx, state, 1, &valid);
+
+	Vector* files = &ctx->editor->files;
+		
+	if (!valid || 
+		number < 1 || 
+		(unsigned long long) number > files->size) 
+	{
+		ctx->api->pushstring(state, "");
+		
+		return 1;
+	}
+
+	EditorFile* ef = vector_get(
+		files,
+		number - 1
+	);
+
+	const char* language = (ef->language)
+		? (ef->language->rules)
+			? ef->language->name
+			: NULL
+		: NULL;
+
+	ctx->api->pushstring(
+		state,
+		language ? language : ""
+	);
+
+	return 1;
+}
+
+
+// get the file's auto_indent config
+
+// auto_indent(index: integer) -> bool
+static int api_auto_indent(lua_State* state) {
+	LuaContext* ctx = context(state);
+
+	int valid = 0;
+	long long number = integer_arg(ctx, state, 1, &valid);
+
+	Vector* files = &ctx->editor->files;
+		
+	if (!valid || 
+		number < 1 || 
+		(unsigned long long) number > files->size) 
+	{
+		ctx->api->pushboolean(state, 0);
+		
+		return 1;
+	}
+
+	EditorFile* ef = vector_get(
+		files,
+		number - 1
+	);
+
+	int auto_indent = (ef->language)
+		? (ef->language->rules)
+			? ef->language->rules->auto_indent
+			: 0
+		: 0;
+
+	ctx->api->pushboolean(
+		state,
+		auto_indent
+	);
+
+	return 1;
+}
+
+
+
+// get the file's language comment format
+
+// comment_fmt(index: integer) -> string
+static int api_comment_fmt(lua_State* state) {
+	LuaContext* ctx = context(state);
+
+	int valid = 0;
+	long long number = integer_arg(ctx, state, 1, &valid);
+
+	Vector* files = &ctx->editor->files;
+		
+	if (!valid || 
+		number < 1 || 
+		(unsigned long long) number > files->size) 
+	{
+		ctx->api->pushstring(state, "");
+		
+		return 1;
+	}
+
+	EditorFile* ef = vector_get(
+		files,
+		number - 1
+	);
+
+	const char* comment_fmt = (ef->language)
+		? (ef->language->rules)
+			? ef->language->rules->comment_fmt
+			: NULL
+		: NULL;
+
+	ctx->api->pushstring(
+		state,
+		comment_fmt ? comment_fmt : ""
+	);
+
+	return 1;
+}
+
+
+// return whether has an active selection
+
+// has_selection(void) -> bool
+static int api_has_selection(lua_State* state) {
+	LuaContext* ctx = context(state);
+
+	ctx->api->pushboolean(
+		state,
+		ctx->editor->sel.active
+	);
+
+	return 1;
+}
+
+
+// get_selection(void) -> string
+static int api_get_selection(lua_State* state) {
+	LuaContext* ctx = context(state);
+
+	const Editor* editor = ctx->editor;
+
+	if (!editor->sel.active) {
+		ctx->api->pushstring(
+			state,
+			""
+		);
+
+		return 1;
+	}
+
+	Clipboard cb = clipboard_new();
+
+	if (file_copy_selection(
+			&editor->actual_file->file,
+			&cb,
+			&editor->sel,
+			NULL
+		) < 0)
+	{
+		ctx->api->pushstring(
+			state,
+			""
+		);
+
+		return 1;
+	}
+
+	char* content = u32string_into_u8(
+		&cb.text
+	);
+
+	ctx->api->pushstring(
+		state,
+		content
+	);
+
+	clipboard_free(&cb);
+	free(content);
+
+	return 1;
+}
+
+
+// returns  the boundaries of an active selection
+
+// get_selection_limits(void) -> (
+// start_x: integer,
+// start_y: integer,
+// end_x: integer,
+// end_y: integer)
+
+// start_x will be -1 if there isn't an active selection
+static int api_get_selection_limits(lua_State* state) {
+	LuaContext* ctx = context(state);
+
+	const Editor* editor = ctx->editor;
+
+	if (!editor->sel.active) {
+		ctx->api->pushinteger(
+			state,
+			-1
+		);
+
+		return 1;
+	}
+
+	Position a, b;
+
+	selection_normalize(&editor->sel, &a, &b);
+
+	ctx->api->pushinteger(
+		state,
+		a.x + 1
+	);
+
+	ctx->api->pushinteger(
+		state,
+		a.y + 1
+	);
+
+	ctx->api->pushinteger(
+		state,
+		b.x + 1
+	);
+
+	ctx->api->pushinteger(
+		state,
+		b.y + 1
+	);
+
+	return 4;
+}
+
+
+// set_dirty(index: integer) -> integer
+static int api_set_dirty(lua_State* state) {
+	LuaContext* ctx = context(state);
+
+	int valid = 0;
+	long long number = integer_arg(ctx, state, 1, &valid);
+
+	Vector* files = &ctx->editor->files;
+		
+	if (!valid || 
+		number < 1 || 
+		(unsigned long long) number > files->size) 
+	{
+		ctx->api->pushinteger(
+			state,
+			-1
+		);
+
+		return 1;
+	}
+
+	EditorFile* ef = vector_get(
+		files,
+		number - 1
+	);
+
+	if (ef->type == EDITOR_FILE_PROTOTYPE) {
+		ctx->api->pushinteger(
+			state,
+			-1
+		);
+
+		return 1;
+	}
+
+	ef->file.dirty = 1;
+
+	ctx->api->pushinteger(
+		state,
+		0
+	);
+
+	return 1;
+}
+
+
+
+// set_line_dirty(index: integer) -> integer
+static int api_set_line_dirty(lua_State* state) {
+	LuaContext* ctx = context(state);
+
+	int valid = 0;
+	long long number = integer_arg(ctx, state, 1, &valid);
+
+	Vector* files = &ctx->editor->files;
+		
+	if (!valid || 
+		number < 1 || 
+		(unsigned long long) number > files->size) 
+	{
+		ctx->api->pushinteger(
+			state,
+			-1
+		);
+
+		return 1;
+	}
+
+	EditorFile* ef = vector_get(
+		files,
+		number - 1
+	);
+
+	if (!ef->lexer) {
+		ctx->api->pushinteger(
+			state,
+			-1
+		);
+
+		return 1;
+	}
+
+	file_set_line_dirty(&ef->file, number);
+
+	ctx->api->pushinteger(
+		state,
+		0
+	);
+
+	return 1;
+}
+
+
+
+static int api_set_all_lines_dirty(lua_State* state) {
+	LuaContext* ctx = context(state);
+
+	int valid = 0;
+	long long number = integer_arg(ctx, state, 1, &valid);
+
+	Vector* files = &ctx->editor->files;
+		
+	if (!valid || 
+		number < 1 || 
+		(unsigned long long) number > files->size) 
+	{
+		ctx->api->pushinteger(
+			state,
+			-1
+		);
+
+		return 1;
+	}
+
+	EditorFile* ef = vector_get(
+		files,
+		number - 1
+	);
+
+	if (ef->type == EDITOR_FILE_PROTOTYPE || !ef->lexer) {
+		ctx->api->pushinteger(
+			state,
+			-1
+		);
+
+		return 1;
+	}
+
+	file_set_all_lines_dirty(&ef->file);
+
+	ctx->api->pushinteger(
+		state,
+		0
+	);
+
+	return 1;
+}
 
 // export a function
 static void add_function
@@ -1523,7 +2767,39 @@ int lua_plugin_run
 	add_function(&api, state, &ctx, "replace", api_replace);
 	add_function(&api, state, &ctx, "undo", api_undo);
 	add_function(&api, state, &ctx, "redo", api_redo);
-	
+	add_function(&api, state, &ctx, "filename", api_filename);
+	add_function(&api, state, &ctx, "pathname", api_pathname);
+	add_function(&api, state, &ctx, "is_empty", api_is_empty);
+	add_function(&api, state, &ctx, "is_loaded", api_is_loaded);
+	add_function(&api, state, &ctx, "is_prototype", api_is_prototype);
+	add_function(&api, state, &ctx, "is_internal", api_is_internal);
+	add_function(&api, state, &ctx, "is_new", api_is_new);
+	add_function(&api, state, &ctx, "is_readonly", api_is_readonly);
+	add_function(&api, state, &ctx, "is_ext_modified", api_is_ext_modified);
+	add_function(&api, state, &ctx, "is_ext_deleted", api_is_ext_deleted);
+	add_function(&api, state, &ctx, "is_ext_movedfrom", api_is_ext_movedfrom);
+	add_function(&api, state, &ctx, "is_ext_attrib_changed", api_is_ext_attrib_changed);
+	add_function(&api, state, &ctx, "is_dirty", api_is_dirty);
+	add_function(&api, state, &ctx, "tab_size", api_tab_size);
+	add_function(&api, state, &ctx, "use_spaces", api_use_spaces);
+	add_function(&api, state, &ctx, "set_readonly", api_set_readonly);
+	add_function(&api, state, &ctx, "set_writeable", api_set_writeable);
+	add_function(&api, state, &ctx, "set_tab_size", api_set_tab_size);
+	add_function(&api, state, &ctx, "set_use_spaces", api_set_use_spaces);
+	add_function(&api, state, &ctx, "has_lexer", api_has_lexer);
+	add_function(&api, state, &ctx, "file_has_language", api_file_has_language);
+	add_function(&api, state, &ctx, "editor_has_language", api_editor_has_language);
+	add_function(&api, state, &ctx, "set_language", api_set_language);
+	add_function(&api, state, &ctx, "language", api_language);
+	add_function(&api, state, &ctx, "comment_fmt", api_comment_fmt);
+	add_function(&api, state, &ctx, "auto_indent", api_auto_indent);
+	add_function(&api, state, &ctx, "has_selection", api_has_selection);
+	add_function(&api, state, &ctx, "get_selection", api_get_selection);
+	add_function(&api, state, &ctx, "get_selection_limits", api_get_selection_limits);
+	add_function(&api, state, &ctx, "set_dirty", api_set_dirty);
+	add_function(&api, state, &ctx, "set_line_dirty", api_set_line_dirty);
+	add_function(&api, state, &ctx, "set_all_lines_dirty", api_set_all_lines_dirty);
+
 	api.setglobal(state, "nyt");
 
 	int ret = api.L_loadfilex(state, path, NULL);

@@ -52,9 +52,22 @@ static int has_equal_filename
 int editor_init
 (
 	Editor* editor,
-	const EditorOptions* eoptions
-) 
+	const EditorOptions* eoptions,
+	Result* result
+)
 {
+	if (!editor || !eoptions) {
+		result_set_error(
+			result,
+			ERROR_INVALID_ARGUMENT,
+			"editor_init: editor or options is NULL"
+		);
+
+		return EIE_FATAL_ERROR;
+	}
+
+	result_ok(result);
+
 	editor->debug_mode = eoptions->debug_mode;
 	int start_readonly = eoptions->start_readonly;
 	char** filenames = eoptions->filenames;
@@ -64,46 +77,56 @@ int editor_init
 		log_init(&editor->log, DEBUG_FILE);
 
 		if (editor->log.fd < 0) {
-			clean_terminal();
-			disable_raw_mode();
-			mouse_off();
+			result_set_error(
+				result,
+				ERROR_FILE_HANDLE,
+				"editor_init: failed to start log file"
+			);
 
-			fprintf(stderr, "failed to start log file");
-
-			return -1;
+			return EIE_FATAL_ERROR;
 		}
-	} 
+	}
 
 	else {
 		editor->log.fd = -1;
 	}
-
-	editor->result.reason = NULL;
-	editor->result.type = EIE_OK;
 
 	if (editor_load_config(editor) < 0) {
 		if (editor->log.fd > 0) {
 			close(editor->log.fd);
 		}
 
-		return -1;
+		result_set_error(
+			result,
+			ERROR_CONFIG,
+			"editor_init: configuration loading was rejected or failed"
+		);
+
+		return EIE_FATAL_ERROR;
 	}
 
 	if (load_lang_plugins(
-		&editor->lang_plugins_data, 
+		&editor->lang_plugins_data,
 		&editor->config.language_plugins) < 0)
 	{
 		if (editor->log.fd > 0) {
 			close(editor->log.fd);
 		}
 
-		return -1;
+		result_set_error(
+			result,
+			ERROR_PLUGIN_LOAD,
+			"editor_init: language plugin loading was rejected or failed"
+		);
+
+		return EIE_FATAL_ERROR;
 	}
 
 	vector_init(
-		&editor->files, 
-		sizeof(EditorFile), 
-		vector_editor_file_destroy);
+		&editor->files,
+		sizeof(EditorFile),
+		vector_editor_file_destroy
+	);
 
 
 #ifdef __FreeBSD__
@@ -112,9 +135,10 @@ int editor_init
 	editor->file_watch_fd = inotify_init();
 #endif
 
+	char config_path[PATH_MAX_LENGTH];
 
 	/// --- CREATE PROTOTYPES ---
-	if (!filenames) {
+	if (!filenames && !eoptions->open_config) {
 		EditorFileOptions efoptions = {
 			.path = NULL,
 			.readonly = 0,
@@ -129,11 +153,38 @@ int editor_init
 	}
 
 	else {
+		if (eoptions->open_config) {
+			if (make_config_path(config_path, sizeof(config_path)) < 0) {
+				vector_free(&editor->files);
+				destroy_lang_plugins(&editor->lang_plugins_data);
+
+				result_set_error(
+					result,
+					ERROR_CONFIG,
+					"editor_init: failed to create config file path"
+				);
+
+				return EIE_FATAL_ERROR;
+			}
+
+			EditorFileOptions efoptions = {
+				.path = config_path,
+				.readonly = start_readonly,
+				.default_tab_size = editor->config.tab_size,
+				.default_use_spaces = editor->config.use_spaces,
+				.file_watch_fd = editor->file_watch_fd
+			};
+
+			EditorFile ef = editor_file_prototype(&efoptions);
+
+			vector_push(&editor->files, &ef);
+		}
+
 		for (size_t i = 0; i < filename_count; i++) {
 			if (i > 0 && has_equal_filename(
 							filenames,
 							i - 1,
-							filenames[i])) 
+							filenames[i]))
 			{
 				continue;
 			}
@@ -159,14 +210,14 @@ int editor_init
 	int ret = editor_file_open(
 		editor->actual_file,
 		&editor->lang_plugins_data,
-		&editor->result
+		result
 	);
 
 	if (ret < 0) {
 		vector_free(&editor->files);
 		destroy_lang_plugins(&editor->lang_plugins_data);
 
-		return -1;		
+		return ret;
 	}
 
 	editor_create_syntax(editor);
@@ -202,7 +253,6 @@ void editor_free(Editor* editor) {
 		return ;
 	}
 
-	result_free(&editor->result);
 	clipboard_free(&editor->cb);
 	vector_free(&editor->files);
 
@@ -314,9 +364,9 @@ static int check_keybinds(const struct config* config) {
 
 static EditorFile* find_file_by_watch
 (
-	Editor* editor, 
+	Editor* editor,
 	int wd
-) 
+)
 {
 	for (size_t i = 0; i < editor->files.size; i++) {
 		EditorFile* ef = vector_get(&editor->files, i);
@@ -329,7 +379,8 @@ static EditorFile* find_file_by_watch
 			continue;
 		}
 
-		if (ef->watch_descriptor == wd || ef->watch_file_descriptor == wd)
+		if (ef->watch_descriptor == wd ||
+			ef->watch_file_descriptor == wd)
 		{
 			return ef;
 		}
@@ -341,9 +392,11 @@ static EditorFile* find_file_by_watch
 void editor_check_file_watch(Editor* editor) {
 	if (editor->file_watch_fd < 0) {
 		if (editor->debug_mode) {
-			log_write(&editor->log, 
-				"editor_check_file_watch: invalid fd");
-		}	
+			log_write(
+				&editor->log,
+				"editor_check_file_watch: invalid fd"
+			);
+		}
 
 		return;
 	}
@@ -353,11 +406,11 @@ void editor_check_file_watch(Editor* editor) {
 	struct timespec timeout = {0, 0};
 
 	int count = kevent(
-		editor->file_watch_fd, 
-		NULL, 
-		0, 
-		events, 
-		32, 
+		editor->file_watch_fd,
+		NULL,
+		0,
+		events,
+		32,
 		&timeout
 	);
 
@@ -367,7 +420,7 @@ void editor_check_file_watch(Editor* editor) {
 
 	for (int i = 0; i < count; i++) {
 		EditorFile* ef = find_file_by_watch(
-			editor, 
+			editor,
 			(int) events[i].ident
 		);
 
@@ -390,31 +443,31 @@ void editor_check_file_watch(Editor* editor) {
 
 			if (ef->watch_file_descriptor < 0) {
 				editor_file_set_watcher(
-					ef, 
+					ef,
 					ef->file.path,
 					editor->file_watch_fd
 				);
 
 				editor_file_update_metadata(ef);
 			}
-		} 
+		}
 
 		else if (st.st_ino != ef->metadata.inode) {
 			ef->externally_modified = 1;
 
 			editor_file_del_watcher(
-				ef, 
+				ef,
 				editor->file_watch_fd
 			);
 
 			editor_file_set_watcher(
-				ef, 
+				ef,
 				ef->file.path,
 				editor->file_watch_fd
 			);
 
 			editor_file_update_metadata(ef);
-		} 
+		}
 
 		else {
 			handle_file_modified(ef);
@@ -434,7 +487,7 @@ void editor_check_file_watch(Editor* editor) {
 	if (length < 0) {
 		if (editor->debug_mode) {
 			log_write(&editor->log, "editor_check_file_watch: length < 0");
-		}	
+		}
 
 		return;
 	}
@@ -448,7 +501,7 @@ void editor_check_file_watch(Editor* editor) {
 
 		if (event->mask & IN_IGNORED) {
 			if (editor->debug_mode) {
-				log_write(&editor->log, 
+				log_write(&editor->log,
 					"editor_check_file_watch: ignored");
 			}
 
@@ -457,20 +510,20 @@ void editor_check_file_watch(Editor* editor) {
 
 		if (event->len == 0) {
 			if (editor->debug_mode) {
-				log_write(&editor->log, 
+				log_write(&editor->log,
 					"editor_check_file_watch: event->len == 0");
-			}	
+			}
 
 			return;
 		}
 
 		EditorFile* ef = find_file_by_watch(
-			editor, 
+			editor,
 			event->wd);
 
 		if (!ef) {
 			if (editor->debug_mode) {
-				log_write(&editor->log, 
+				log_write(&editor->log,
 					"editor_check_file_watch: no corresponding ef");
 			}
 
@@ -483,7 +536,7 @@ void editor_check_file_watch(Editor* editor) {
 			ptr += sizeof(struct inotify_event) + event->len;
 
 			if (editor->debug_mode) {
-				log_write(&editor->log, 
+				log_write(&editor->log,
 					"editor_check_file_watch: different file %s",
 					event->name);
 			}
@@ -494,7 +547,7 @@ void editor_check_file_watch(Editor* editor) {
 		if (event->mask & IN_MOVED_TO) {
 			if (editor->debug_mode) {
 				log_write(&editor->log, "editor_check_file_watch: moved_to");
-			}	
+			}
 
 			handle_file_moved_into(ef);
 		}
@@ -502,7 +555,7 @@ void editor_check_file_watch(Editor* editor) {
 		if (event->mask & IN_CLOSE_WRITE) {
 			if (editor->debug_mode) {
 				log_write(&editor->log, "editor_check_file_watch: close_write");
-			}	
+			}
 
 			handle_file_modified(ef);
 		}
@@ -512,7 +565,7 @@ void editor_check_file_watch(Editor* editor) {
 				log_write(&editor->log, "editor_check_file_watch: modify");
 			}
 
-			handle_file_modified(ef);		
+			handle_file_modified(ef);
 		}
 
 		if (event->mask & IN_DELETE) {
@@ -526,7 +579,7 @@ void editor_check_file_watch(Editor* editor) {
 		if (event->mask & IN_MOVED_FROM) {
 			if (editor->debug_mode) {
 				log_write(&editor->log, "editor_check_file_watch: moved_from");
-			}	
+			}
 
 			handle_file_moved_from(ef, editor->file_watch_fd);
 		}
@@ -534,7 +587,7 @@ void editor_check_file_watch(Editor* editor) {
 		if (event->mask & IN_ATTRIB) {
 			if (editor->debug_mode) {
 				log_write(&editor->log, "editor_check_file_watch: attrib");
-			}	
+			}
 
 			handle_file_attrib_changed(ef);
 		}
@@ -542,18 +595,18 @@ void editor_check_file_watch(Editor* editor) {
 		if (event->mask & IN_CREATE) {
 			if (editor->debug_mode) {
 				log_write(&editor->log, "editor_check_file_watch: create");
-			}	
+			}
 
 			handle_file_create(ef, editor->file_watch_fd);
 		}
 
 		ptr += sizeof(struct inotify_event) + event->len;
-	}	
+	}
 
 
 	if (editor->debug_mode) {
 		log_write(&editor->log, "editor_check_file_watch: reached end");
-	}	
+	}
 #endif
 }
 
@@ -563,7 +616,7 @@ ssize_t editor_has_file(const Editor* editor, const char* path) {
 		const EditorFile* ef = vector_get_const(&editor->files, i);
 
 		if (ef->type == EDITOR_FILE_PROTOTYPE) {
-			if (path && 
+			if (path &&
 				strcmp(ef->proto_data.options.path, path) == 0)
 			{
 				return i;
@@ -579,8 +632,8 @@ ssize_t editor_has_file(const Editor* editor, const char* path) {
 		}
 
 
-		if (ef->type == EDITOR_FILE_LOADED && 
-			!ef->file.path && !path) 
+		if (ef->type == EDITOR_FILE_LOADED &&
+			!ef->file.path && !path)
 		{
 			return i;
 		}
@@ -619,23 +672,15 @@ static int editor_load_config(Editor* editor) {
 	return 0;
 }
 
-void editor_log_write(const Editor* editor) {
-	if (editor->log.fd < 0 || !editor->result.reason) {
-		return;
-	}
-
-	log_write(&editor->log, editor->result.reason);
-}
-
 void editor_create_syntax(Editor* editor) {
-	if (!editor->actual_file->lexer || 
-		editor->actual_file->tokenized) 
+	if (!editor->actual_file->lexer ||
+		editor->actual_file->tokenized)
 	{
 		return;
 	}
 
 	file_create_tokens(
-		&editor->actual_file->file, 
+		&editor->actual_file->file,
 		editor->actual_file->lexer);
 
 	editor->actual_file->tokenized = 1;
@@ -647,7 +692,7 @@ void editor_create_syntax(Editor* editor) {
 
 void editor_update_syntax(Editor* editor) {
 	if (!editor->actual_file->lexer ||
-		!editor->actual_file->tokenized) 
+		!editor->actual_file->tokenized)
 	{
 		return;
 	}
@@ -657,9 +702,9 @@ void editor_update_syntax(Editor* editor) {
 	if (has_dirty) {
 		log_write(&editor->log, "\neditor_update_syntax: STATES BEFORE:\n");
 
-		for (size_t i = 0; 
-			i < file_num_lines(&editor->actual_file->file); 
-			i++) 
+		for (size_t i = 0;
+			i < file_num_lines(&editor->actual_file->file);
+			i++)
 		{
 			const Line* line = file_get_line(&editor->actual_file->file, i);
 
@@ -674,7 +719,7 @@ void editor_update_syntax(Editor* editor) {
 	ssize_t start = -1, end = -1;
 
 	file_recalculate_tokens(
-		&editor->actual_file->file, 
+		&editor->actual_file->file,
 		editor->actual_file->lexer,
 		&start,
 		&end);
@@ -682,9 +727,9 @@ void editor_update_syntax(Editor* editor) {
 	if (has_dirty) {
 		log_write(&editor->log, "\neditor_update_syntax: STATES AFTER:\n");
 
-		for (size_t i = 0; 
-			i < file_num_lines(&editor->actual_file->file); 
-			i++) 
+		for (size_t i = 0;
+			i < file_num_lines(&editor->actual_file->file);
+			i++)
 		{
 			const Line* line = file_get_line(&editor->actual_file->file, i);
 
@@ -710,45 +755,45 @@ size_t get_gutter_width(size_t line_count) {
 		tmp /= 10;
 		digits++;
 	}
-	
-	return digits + 1;	
+
+	return digits + 1;
 }
 
 ssize_t editor_has_equal_filename
 (
-	const Editor* editor, 
+	const Editor* editor,
 	const char* filename,
 	size_t index
-) 
+)
 {
 	if (!filename) {
 		return -1;
 	}
-	
+
 	for (size_t i = 0; i < editor->files.size; i++) {
 		if (i == index) {
 			continue;
 		}
-		
+
 		const EditorFile* ef = vector_get_const(
 			&editor->files,
 			i
 		);
-		
+
 		if (ef->type == EDITOR_FILE_PROTOTYPE)
 		{
 			char name[PATH_MAX_LENGTH];
-			
+
 			get_filename_after_last_slash(
 				name,
 				ef->proto_data.options.path
 			);
-			
+
 			if (strcmp(name, filename) == 0) {
 				return i;
 			}
 		}
-		
+
 		else {
 			if (ef->file.filename &&
 				strcmp(ef->file.filename, filename) == 0)
@@ -757,28 +802,28 @@ ssize_t editor_has_equal_filename
 			}
 		}
 	}
-	
+
 	return -1;
 }
 
 void editor_prompt_init(Editor* editor) {
 	assert(editor->actual_file->type != EDITOR_FILE_PROTOTYPE);
-	
+
 	if (!editor->actual_file->file.filename) {
 		prompt_init(&editor->status_bar, "untitled", PT_INFO);
 	}
-	
+
 	else {
 		ssize_t index = editor_has_equal_filename(
 			editor,
 			editor->actual_file->file.filename,
 			editor->actual_file_index
 		);
-		
+
 		const char* name = (index >= 0)
 			? editor->actual_file->file.path
 			: editor->actual_file->file.filename;
-		
+
 		prompt_init(
 			&editor->status_bar,
 			name,
@@ -804,7 +849,7 @@ size_t editor_cursor_screen_x(Editor* editor) {
 	return file_to_screen_x(
 		line,
 		editor->cursor.pos.x,
-		editor->config.tab_size
+		editor->actual_file->file.tab_size
 	);
 }
 
@@ -814,11 +859,12 @@ void editor_sync_cursor(Editor* editor) {
 		editor->cursor.pos.y
 	);
 
-	editor->cursor.preferred_column = 
+	editor->cursor.preferred_column =
 		file_to_screen_x(
 			line,
 			editor->cursor.pos.x,
-			editor->config.tab_size);
+			editor->actual_file->file.tab_size
+		);
 
 	if (editor->debug_mode) {
 		log_write(&editor->log, "editor_sync_cursor: SUCCESS");
@@ -834,7 +880,7 @@ void editor_clamp_cursor_to_view(Editor* editor) {
 	size_t cursor_screen_x = file_to_screen_x(
 		line,
 		editor->cursor.pos.x,
-		editor->config.tab_size
+		editor->actual_file->file.tab_size
 	);
 
 	size_t left = editor->view.col_offset;
@@ -844,7 +890,7 @@ void editor_clamp_cursor_to_view(Editor* editor) {
 		editor->cursor.pos.x = screen_to_file_x(
 			line,
 			left,
-			editor->config.tab_size
+			editor->actual_file->file.tab_size
 		);
 
 		editor_sync_cursor(editor);
@@ -854,7 +900,7 @@ void editor_clamp_cursor_to_view(Editor* editor) {
 		editor->cursor.pos.x = screen_to_file_x(
 			line,
 			right,
-			editor->config.tab_size
+			editor->actual_file->file.tab_size
 		);
 
 		editor_sync_cursor(editor);
@@ -889,4 +935,37 @@ IsWordChar editor_get_IsWordChar(const Editor* editor) {
 	else {
 		return editor->actual_file->language->rules->is_word_char;
 	}
+}
+
+
+ssize_t editor_has_language(const Editor* editor, const char* name) {
+	if (!name || editor->lang_plugins_data.size == 0) {
+		return -1;
+	}
+
+	const Vector* languages = &editor->lang_plugins_data;
+
+	for (size_t i = 0; i < languages->size; i++) {
+		const LangPluginData* language_data = vector_get_const(
+			languages,
+			i
+		);
+
+		if (!language_data) {
+			continue;
+		}
+
+		const struct language_plugin* language = 
+			language_data->language;
+
+		if (!language || !language->name) {
+			continue;
+		}
+
+		if (strcmp(language->name, name) == 0) {
+			return i;
+		}
+	}
+
+	return -1;
 }
