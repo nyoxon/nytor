@@ -56,4 +56,10 @@ double timespec_ms
 	const struct timespec* end
 );
 
+
+int random_name
+(
+	char* out	// pre allocated, nul terminated
+);
+
 #endif

@@ -1,4 +1,4 @@
-VERSION = 1.2.1
+VERSION = 1.3.0
 PACKAGE = nyt
 PACKAGE_DIR = package
 DEB_PATH = $(PACKAGE)_$(VERSION)_amd64.deb

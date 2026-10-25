@@ -185,4 +185,6 @@ void editor_redo(Editor* editor);
 
 int editor_open_config_file(Editor* editor);
 
+int editor_clone(Editor* editor, size_t index);
+
 #endif

@@ -96,7 +96,6 @@ int main(int argc, char* argv[]) {
 	detect_clipboard_backend();
 
 
-
 	/// --- POLL INIT ---
 	struct pollfd fds[] = {
 		{
@@ -207,8 +206,6 @@ int main(int argc, char* argv[]) {
 			break; // MAYBE: maybe a better handler
 		}
 	}
-
-
 
 	/// --- "goodbye, world!\n" ---
 	deactivate_terminal();

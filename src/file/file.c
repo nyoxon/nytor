@@ -1516,17 +1516,27 @@ int file_insert_newline
 int file_merge_lines
 (
 	File* file,
-	const Position pos,
+	size_t y,
 	Result* result
 )
 {
 	result_ok(result);
 
-	Line* prev_line = vector_get(&file->lines, pos.y - 1);
+	if (y == 0 || y >= file->lines.size) {
+		result_set_error(
+			result,
+			ERROR_INDEX_OUT_OF_BOUNDS,
+			"file_merge_lines: index out of bounds"
+		);
+
+		return EIE_NOT_FATAL_ERROR;		
+	}
+
+	Line* prev_line = vector_get(&file->lines, y - 1);
 	u32string* prev_text = &prev_line->text;
 
 	size_t old_prev_size = u32string_size(prev_text);
-	u32string* curr = file_get_line_text(file, pos.y);
+	u32string* curr = file_get_line_text(file, y);
 
 	size_t curr_size = u32string_size(curr);
 	size_t new_size = old_prev_size + curr_size;
@@ -1560,7 +1570,7 @@ int file_merge_lines
 
 	u32string_replace_text_raw(prev_text, new_text, new_size);
 
-	vector_remove_and_destroy(&file->lines, pos.y);
+	vector_remove_and_destroy(&file->lines, y);
 
 	file->dirty = 1;
 	file->has_dirty_line = 1;

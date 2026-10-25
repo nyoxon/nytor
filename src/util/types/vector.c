@@ -13,6 +13,7 @@ void vector_init(Vector* v, size_t elem_size, Destructor destroy) {
 	v->capacity = 0;
 	v->elem_size = elem_size;
 	v->destroy = destroy;
+	v->clone = NULL;
 }
 
 static void vector_assert_non_null(const Vector* v) {
@@ -346,6 +347,7 @@ void vector_clone(const Vector* src, Vector* dst) {
 	vector_assert_non_null(dst);
 
 	size_t elem_size = src->elem_size;
+	vector_init(dst, src->elem_size, src->destroy);
 
 	if (src->capacity == 0) {
 		return;

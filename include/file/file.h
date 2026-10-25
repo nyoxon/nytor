@@ -225,7 +225,7 @@ int file_move_line_up(File* file, size_t y, Result* result);
 
 // used to handle the case where the user deletes a char at
 // the begginning of a line
-int file_merge_lines(File* file, const Position pos, Result* result);
+int file_merge_lines(File* file, size_t y, Result* result);
 
 
 int file_indent_a_line

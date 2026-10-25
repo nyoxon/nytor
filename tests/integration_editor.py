@@ -85,20 +85,25 @@ def run_editor(binary, home, target):
 
 		# Let terminal setup and the initial render finish before sending input.
 		drain_output(master, 0.2)
+
 		# Type UTF-8 text, save with Ctrl+S, then quit with Ctrl+Q.
 		expected = "hello π".encode("utf-8")
+
 		for byte in expected:
 			os.write(master, bytes([byte]))
 			time.sleep(0.02)
+
 		drain_output(master, 0.2)
 		os.write(master, b"\x13")
 		save_output = drain_output(master, 0.4)
 
 		with open(target, "rb") as stream:
 			contents = stream.read()
+
 		if contents != expected:
 			os.kill(child, signal.SIGKILL)
 			os.waitpid(child, 0)
+
 			return False, (
 				f"Ctrl+S did not save expected content: {contents!r}; "
 				f"terminal output: {save_output[-300:]!r}"
@@ -107,6 +112,7 @@ def run_editor(binary, home, target):
 		os.write(master, b"\x11")
 
 		exit_code, exit_output = wait_for_exit(master, child, 5)
+		
 		if exit_code is None:
 			os.kill(child, signal.SIGKILL)
 			os.waitpid(child, 0)

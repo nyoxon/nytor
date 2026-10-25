@@ -31,5 +31,6 @@ size_t line_tokens_size(const Line* line);
 
 void line_tokenize(Line* line, struct lexer* lexer);
 
+void line_cloner(const void* src, void* dst);
 
 #endif

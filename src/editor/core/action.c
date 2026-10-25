@@ -24,7 +24,6 @@
 
 
 /// --- TERMINAL ---
-
 void editor_open_terminal(Editor* editor) {
 	const char* shell = NULL;
 
@@ -50,15 +49,8 @@ void editor_open_terminal(Editor* editor) {
 	clean_terminal();
 	mouse_off();
 
-	// struct winsize ws = {
-	// 	.ws_row = editor->tsize.rows / 2,
-	// 	.ws_col = editor->tsize.cols / 2
-	// };
-
 	int master;
 	pid_t pid;
-
-	// pid = forkpty(&master, NULL, NULL, &ws);
 
 	pid = forkpty(&master, NULL, NULL, NULL);
 
@@ -166,7 +158,6 @@ void editor_open_terminal(Editor* editor) {
 
 
 /// --- SUSPEND ---
-
 void editor_update_size(Editor* editor) {
 	update_scroll(&editor->view,
 		editor->cursor.pos,
@@ -902,7 +893,7 @@ void editor_handle_attrib_changed(Editor* editor) {
 
 
 
-/// --- SAVE ---
+/// --- SAVE DA SILVA ---
 int editor_save_file(
 	Editor* editor,
 	size_t index,
@@ -3336,7 +3327,7 @@ int delete_newline
 
 	ret = file_merge_lines(
 		&editor->actual_file->file,
-		editor->cursor.pos,
+		editor->cursor.pos.y,
 		NULL);
 
 	if (ret < 0) {

@@ -595,9 +595,10 @@ int u32string_equalnu32
 
 int u32string_equalu8(const u32string* a, const char* b) {
 	size_t i = 0;
+	size_t a_size = u32string_size(a);
 
 	while (b[i]) {
-		if (i >= u32string_size(a)) {
+		if (i >= a_size) {
 			return 0;
 		}
 

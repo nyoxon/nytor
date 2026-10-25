@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <signal.h>
+#include <assert.h>
 
 #include "terminal/input.h"
 #include "terminal/style.h"
@@ -37,7 +38,14 @@ void disable_raw_mode() {
 
 	// best effort: tcsetattr() is not async-signal-safe,
 	// but restoring the terminal is preferable during a crash.
-	tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
+	if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios) < 0) {
+		perror("disable_raw_mode: tcgetattr");
+
+		_exit(1); // this function was registered with
+				  // atexit, so calling exit from within it
+				  // result in undefined behavior
+	}
+
 	raw_mode_enabled = 0;
 }
 
@@ -47,7 +55,8 @@ void enable_raw_mode() {
 	}
 
 	if (tcgetattr(STDIN_FILENO, &orig_termios) == -1) {
-		exit(1);
+		perror("enable_raw_mode: tcgetattr");
+		_exit(1);
 	}
 
 	atexit(disable_raw_mode);
@@ -64,7 +73,8 @@ void enable_raw_mode() {
 	// best effort: tcsetattr() is not async-signal-safe,
 	// but restoring the terminal is preferable during a crash.
 	if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) {
-		exit(1);
+		perror("enable_raw_mode: tcgetattr");
+		_exit(1);
 	}
 
 	raw_mode_enabled = 1;
@@ -183,7 +193,7 @@ char* str_action(int index) {
 		return strdup("quit!");
 
 	case ACTION_CLOSE_FILE_FORCED:
-		return strdup("close_forced");
+		return strdup("close_file_forced");
 
 	case ACTION_UNDO:
 		return strdup("undo");

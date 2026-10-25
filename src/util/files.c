@@ -405,3 +405,27 @@ double timespec_ms
 	return (end->tv_sec - start->tv_sec) * 1000.0 +
 		   (end->tv_nsec - start->tv_nsec) / 1e6;
 }
+
+
+int random_name
+(
+	char* out 	// pre allocated, nul terminated
+) 
+{
+	if (!out || strlen(out) == 0) {
+		return - 1;
+	}
+
+	const char charset[] = 
+		"abcdefghijklmnopqrstuvwxyz"
+		"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+		"0123456789";
+
+	srand((unsigned) time(NULL));
+
+	for (size_t i = 0; out[i] != '\0'; i++) {
+		out[i] = charset[rand() % (sizeof(charset) - 1)];
+	}
+
+	return 0;
+}

@@ -72,3 +72,21 @@ void line_tokenize(Line* line, struct lexer* lexer) {
 	line->tokens = line_tokens;
 	line->dirty = 0;		// important
 }
+
+
+void line_clone(const Line* src, Line* dst) {
+	u32string_cloner(&src->text, &dst->text);
+	vector_cloner(&src->tokens, &dst->tokens);
+
+	dst->state_in = src->state_in;
+	dst->state_out = src->state_out;
+
+	dst->dirty = src->dirty;
+}
+
+void line_cloner(const void* src, void* dst) {
+	const Line* line1 = src;
+	Line* line2 = dst;
+
+	line_clone(line1, line2);
+}

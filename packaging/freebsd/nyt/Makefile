@@ -1,5 +1,5 @@
 PORTNAME=	nyt
-DISTVERSION=	1.2.1
+DISTVERSION=	1.3.0
 CATEGORIES=	editors
 
 MAINTAINER=	nyoxon@duck.com
