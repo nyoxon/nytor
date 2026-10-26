@@ -2045,6 +2045,16 @@ int editor_handle_cmd
 
 	/// --- SAVEAS ---
 	if (strcmp(words[0], saveas.name) == 0) {
+		if (editor->actual_file->readonly) {
+			prompt_init(
+				&editor->status_bar,
+				PROMPT_READONLY,
+				PT_INFO
+			);
+
+			goto cleanup;
+		}
+
 		if (n == 1) {
 			prompt_init(
 				&editor->status_bar,
@@ -2056,15 +2066,6 @@ int editor_handle_cmd
 
 		// > saveas atumalaka.laka
 		else {
-			if (editor->actual_file->readonly) {
-				prompt_init(
-					&editor->status_bar,
-					PROMPT_READONLY,
-					PT_INFO);
-
-				goto cleanup;
-			}
-
 			const char* new_name = words[1];
 
 			ssize_t index = editor_has_file(editor, new_name);
@@ -2828,6 +2829,16 @@ int editor_handle_cmd
 
 	/// --- INSERTAT ---
 	if (strcmp(words[0], insertat.name) == 0) {
+		if (editor->actual_file->readonly) {
+			prompt_init(
+				&editor->status_bar,
+				PROMPT_READONLY,
+				PT_INFO
+			);
+
+			goto cleanup;
+		}
+
 		if (n < 3) {
 			prompt_init(
 				&editor->status_bar,
@@ -2897,6 +2908,16 @@ int editor_handle_cmd
 
 	/// --- APPEND ---
 	if (strcmp(words[0], append.name) == 0) {
+		if (editor->actual_file->readonly) {
+			prompt_init(
+				&editor->status_bar,
+				PROMPT_READONLY,
+				PT_INFO
+			);
+
+			goto cleanup;
+		}
+
 		if (n == 1) {
 			prompt_init(
 				&editor->status_bar,
@@ -2943,6 +2964,16 @@ int editor_handle_cmd
 
 	/// --- PREPEND ---
 	if (strcmp(words[0], prepend.name) == 0) {
+		if (editor->actual_file->readonly) {
+			prompt_init(
+				&editor->status_bar,
+				PROMPT_READONLY,
+				PT_INFO
+			);
+
+			goto cleanup;
+		}
+
 		if (n == 1) {
 			prompt_init(
 				&editor->status_bar,
@@ -2989,6 +3020,16 @@ int editor_handle_cmd
 
 	/// --- REPLACE ---
 	if (strcmp(words[0], replace.name) == 0) {
+		if (editor->actual_file->readonly) {
+			prompt_init(
+				&editor->status_bar,
+				PROMPT_READONLY,
+				PT_INFO
+			);
+
+			goto cleanup;
+		}
+
 		if (n == 1) {
 			prompt_init(
 				&editor->status_bar,
@@ -3209,6 +3250,16 @@ int editor_handle_cmd
 
 	/// --- UNDO ---
 	if (strcmp(words[0], undo.name) == 0) {
+		if (editor->actual_file->readonly) {
+			prompt_init(
+				&editor->status_bar,
+				PROMPT_READONLY,
+				PT_INFO
+			);
+
+			goto cleanup;
+		}
+
 		if (n == 1) {
 			editor_undo(editor);
 			goto cleanup;
@@ -3235,6 +3286,16 @@ int editor_handle_cmd
 
 	/// --- REDO ---
 	if (strcmp(words[0], redo.name) == 0) {
+		if (editor->actual_file->readonly) {
+			prompt_init(
+				&editor->status_bar,
+				PROMPT_READONLY,
+				PT_INFO
+			);
+
+			goto cleanup;
+		}
+
 		if (n == 1) {
 			editor_redo(editor);
 			goto cleanup;

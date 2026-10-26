@@ -3443,6 +3443,16 @@ int editor_delete_char_or_selection
 
 
 void editor_del_from_cursor_left(Editor* editor) {
+	if (editor->actual_file->readonly) {
+		prompt_init(
+			&editor->status_bar,
+			PROMPT_READONLY,
+			PT_INFO
+		);
+
+		return;
+	}
+
 	if (editor->cursor.pos.x == 0) {
 		return;
 	}
@@ -3481,6 +3491,16 @@ void editor_del_from_cursor_left(Editor* editor) {
 }
 
 void editor_del_from_cursor_right(Editor* editor) {
+	if (editor->actual_file->readonly) {
+		prompt_init(
+			&editor->status_bar,
+			PROMPT_READONLY,
+			PT_INFO
+		);
+
+		return;
+	}
+
 	size_t size = file_size_line(
 		&editor->actual_file->file,
 		editor->cursor.pos.y

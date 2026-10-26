@@ -836,6 +836,16 @@ int editor_autocomp_word(Editor* editor) {
 		return -1;
 	}
 
+	if (editor->actual_file->readonly) {
+		prompt_init(
+			&editor->status_bar,
+			PROMPT_READONLY,
+			PT_INFO
+		);
+
+		return -1;
+	}
+
 	const u32string* text = file_get_line_text(
 		&editor->actual_file->file,
 		editor->cursor.pos.y

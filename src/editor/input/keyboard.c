@@ -482,6 +482,15 @@ int editor_handle_normal_input(Editor* editor, struct normal_key key) {
 /// --- LANGUAGE ---
 
 static int editor_handle_open_delimiters(Editor* editor, uint32_t key) {
+	if (editor->actual_file->readonly) {
+		prompt_init(
+			&editor->status_bar,
+			PROMPT_READONLY,
+			PT_INFO);
+
+		return EIE_NOT_FATAL_ERROR;		
+	}
+
 	uint32_t open = key;
 	uint32_t close;
 
