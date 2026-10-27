@@ -57,10 +57,7 @@ name = "default"
 
 [ui]
 
-# if you use a language plugin, the fg component
-# of the normal color could end up becoming useless,
-# in the case, be sure to set the same color to
-# syntax.normal.fg
+# normal text color + background
 
 normal = 			{ fg = "#ffffff", bg = "default" }
 
@@ -84,7 +81,6 @@ window_current_line = 	{ fg = "#80f2a9", bg = "#2372c9" }
 # ---- SYNTAX ---
 
 [syntax]
-normal = 		{ fg = "#ffffff" }
 whitespace =	{ fg = "#444444" }
 keyword = 		{ fg = "#2339f9" }
 comment = 		{ fg = "#6a9955", italic }
