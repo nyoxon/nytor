@@ -105,17 +105,6 @@ select_line_selects_next = true
 left_click_end_selection = false
 
 
-# defines whether the background color should fill all (almost)
-# the terminal.
-# the default behavior is to fill only the area writable by the
-# user, which means that only syntax (bg) colors would be changed and
-# the program wouldn't try to paint the horizontal and vertical
-# ends of the terminal.
-# default = false
-
-background_fills_all = false
-
-
 # defines whether the inner auto_complete should be used
 # default = false
 use_autocomplete = false
