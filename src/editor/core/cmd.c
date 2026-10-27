@@ -61,8 +61,10 @@ static WindowResult on_select_change_theme(void* userdata) {
 		);
 	}
 
-	log_write(&editor->log, "theme: %s",
-		editor->config.theme_path);
+	if (editor->debug_mode) {
+		log_write(&editor->log, "theme: %s",
+			editor->config.theme_path);
+	}
 
 	free(themeu8);
 

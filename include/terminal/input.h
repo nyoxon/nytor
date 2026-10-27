@@ -117,4 +117,6 @@ char* str_modifier(uint32_t modifiers);
 void activate_terminal();
 void deactivate_terminal();
 
+void clean_prompt(size_t vsize);
+
 #endif

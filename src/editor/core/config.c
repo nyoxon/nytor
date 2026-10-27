@@ -43,66 +43,29 @@ static void set_background_color(struct config* config, struct color color) {
 		*bg = color;
 	}	
 
-	if (config->background_fills_all) {
-		bg = &config->ui.selection.bg;
+	bg = &config->ui.selection.bg;
 
-		if (color_equal(*bg, ANSI_COLOR_DEFAULT))
-		{
-			*bg = color;
-		}
-
-		bg = &config->ui.line_number.bg;
-
-		if (color_equal(*bg, ANSI_COLOR_DEFAULT))
-		{
-			*bg = color;
-		}
-
-		bg = &config->ui.line_number_current.bg;
-
-		if (color_equal(*bg, ANSI_COLOR_DEFAULT))
-		{
-			*bg = color;
-		}
-
-		if (color_equal(*bg, ANSI_COLOR_DEFAULT))
-		{
-			*bg = color;
-		}
-
-		bg = &config->ui.status_bar.bg;
-
-		if (color_equal(*bg, ANSI_COLOR_DEFAULT))
-		{
-			*bg = color;
-		}				
+	if (color_equal(*bg, ANSI_COLOR_DEFAULT))
+	{
+		*bg = color;
 	}
+
+	bg = &config->ui.line_number.bg;
+
+	if (color_equal(*bg, ANSI_COLOR_DEFAULT))
+	{
+		*bg = color;
+	}
+
+	bg = &config->ui.line_number_current.bg;
+
+	if (color_equal(*bg, ANSI_COLOR_DEFAULT))
+	{
+		*bg = color;
+	}			
 }
 
-void config_default(struct config* config) {
-	strcpy(config->shell, "");
-	strcpy(config->theme_path, "");
-
-	vector_init(
-		&config->language_plugins, 
-		sizeof(char*), 
-		vector_char_array_destroy);
-
-	config->tab_size = 4;
-	config->use_spaces = 0;
-
-	config->line_numbers = 1;
-	config->cursor_follow_scroll = 1;
-	config->show_tabs = 0;
-	config->left_click_end_selection = 0;
-	config->auto_save_quit = 0;
-	config->background_fills_all = 0;
-	config->has_background = 0;
-	config->auto_shell = 0;
-	config->use_autocomplete = 1;
-	config->select_line_selects_next = 1;
-
-
+static void config_ui_default(struct config* config) {
 	config->ui.normal = (struct style) {
 		color_ansi(DEFAULT),
 		color_ansi(DEFAULT),
@@ -133,8 +96,6 @@ void config_default(struct config* config) {
 		0
 	};
 
-	config->ui.cursor_style = CURSOR_STYLE_DEFAULT;
-
 	config->ui.window_color.border = (struct style) {
 		color_ansi(BLUE),
 		color_ansi(DEFAULT),
@@ -152,7 +113,9 @@ void config_default(struct config* config) {
 		color_ansi(BLUE),
 		0
 	};
+}
 
+static void config_theme_default(struct config* config) {
 	config->theme[HL_NONE] = STYLE_DEFAULT;
 	config->theme[HL_NORMAL] = STYLE_DEFAULT;
 	config->theme[HL_WHITESPACE] = STYLE_DEFAULT;
@@ -172,8 +135,10 @@ void config_default(struct config* config) {
 	config->theme[HL_LIB_FUNCTION] = STYLE_DEFAULT;
 	config->theme[HL_SPECIFIER] = STYLE_DEFAULT;
 	config->theme[HL_POSIX] = STYLE_DEFAULT;
-	config->theme[HL_METHOD_OR_ATTRIB] = STYLE_DEFAULT;
+	config->theme[HL_METHOD_OR_ATTRIB] = STYLE_DEFAULT;	
+}
 
+static void config_keybinds_default(struct config* config) {
 	config->keybinds[ACTION_SAVE] = (struct normal_key) {
 		's', KEY_MOD_CTRL
 	};
@@ -341,6 +306,36 @@ void config_default(struct config* config) {
 	config->keybinds[ACTION_CLOSE_FILE_FORCED] = (struct normal_key) {
 		'w', KEY_MOD_ALT
 	};
+}
+
+
+void config_default(struct config* config) {
+	strcpy(config->shell, "");
+	strcpy(config->theme_path, "");
+
+	vector_init(
+		&config->language_plugins, 
+		sizeof(char*), 
+		vector_char_array_destroy);
+
+	config->tab_size = 4;
+	config->use_spaces = 0;
+
+	config->line_numbers = 1;
+	config->cursor_follow_scroll = 1;
+	config->show_tabs = 0;
+	config->left_click_end_selection = 0;
+	config->auto_save_quit = 0;
+	config->auto_shell = 0;
+	config->use_autocomplete = 1;
+	config->select_line_selects_next = 1;
+
+
+	config->ui.cursor_style = CURSOR_STYLE_DEFAULT;
+
+	config_ui_default(config);
+	config_theme_default(config);
+	config_keybinds_default(config);
 }
 
 void config_check_equal_keybinds
@@ -724,12 +719,7 @@ static void handle_syntax
 	struct style* style
 ) 
 {
-	if  (strcmp(key, "normal") == 0) {
-		style[HL_NORMAL] = s;
-		style[HL_NONE] = s;
-	}
-
-	else if  (strcmp(key, "whitespace") == 0) {
+	if  (strcmp(key, "whitespace") == 0) {
 		style[HL_WHITESPACE] = s;
 	}
 
@@ -834,6 +824,9 @@ int config_load_specific_theme(struct config* config, const char* theme) {
 	char line[256];
 	enum section current = SEC_NONE;
 
+	config_ui_default(config);
+	config_theme_default(config);
+
 	while (fgets(line, sizeof(line), file)) {
 		struct style s = STYLE_DEFAULT;
 
@@ -864,10 +857,11 @@ int config_load_specific_theme(struct config* config, const char* theme) {
 		}
 	}
 
+	config->theme[HL_NORMAL] = config->ui.normal;
+	config->theme[HL_NONE] = config->ui.normal;
+
 	if (!color_equal(config->ui.normal.bg, ANSI_COLOR_DEFAULT)) 
 	{
-		config->has_background = 1;
-
 		set_background_color(config, config->ui.normal.bg);
 	}
 
@@ -1034,16 +1028,6 @@ static void handle_ui_config
 
 		else if (strcmp(value, "true") == 0) {
 			config->auto_save_quit = 1;
-		}
-	}
-
-	if (strcmp(key, "background_fills_all") == 0) {
-		if (strcmp(value, "false") == 0) {
-			config->background_fills_all = 0;
-		}
-
-		else if (strcmp(value, "true") == 0) {
-			config->background_fills_all = 1;
 		}
 	}
 

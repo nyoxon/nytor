@@ -1593,6 +1593,8 @@ int editor_paste_clipboard(Editor* editor) {
 
 void editor_move_cursor_right(Editor* editor)
 {
+	editor_cursor_update(editor);
+
 	if (editor->cursor.pos.x >
 		file_size_line(&editor->actual_file->file, editor->cursor.pos.y))
 	{
@@ -1617,6 +1619,8 @@ void editor_move_cursor_right(Editor* editor)
 }
 
 void editor_move_cursor_left(Editor* editor) {
+	editor_cursor_update(editor);
+
 	if (editor->cursor.pos.x == 0) {
 		return;
 	}
@@ -1639,6 +1643,8 @@ void editor_move_cursor_left(Editor* editor) {
 }
 
 void editor_move_cursor_up(Editor* editor) {
+	editor_cursor_update(editor);
+
 	if (editor->cursor.pos.y == 0) {
 		return;
 	}
@@ -1673,6 +1679,8 @@ void editor_move_cursor_up(Editor* editor) {
 
 void editor_move_cursor_down(Editor* editor)
 {
+	editor_cursor_update(editor);
+
 	if (editor->cursor.pos.y >= 
 		file_num_lines(&editor->actual_file->file) - 1) 
 	{

@@ -1,13 +1,44 @@
+# --- NAME ---
+
 name = "default_light"
+
+
+# --- UI ----
 
 [ui]
 
-normal =				{ fg = "#333333", bg = "#aaaaaa" }
-selection = 			{ fg = "#000000", bg = "#565612" }
-line_number =			{ fg = "#000000"}
-line_number_current =	{ fg = "#00aa00", bg = "#891250" }
-status_bar =			{ fg = "#333333", bg = "#565612" }
-spaces_and_tabs =		{ fg = "#dddddd" }
-window_border =			{ fg = "#891250" }
-window_text =			{ fg = "#333333" }
-window_current_line = 	{ fg = "#353535", bg = "#2372c9" }
+normal =             { fg = "#000000", bg = "#fffffe" }
+
+selection =          { fg = "#ff8d36", bg = "#008d36" }
+
+
+line_number =         { fg = "#dc8d36" }
+line_number_current = { fg = "#dc0d36", bg = "#dc8d36" }
+status_bar =          { fg = "#000000", bg = "#dcdd36" }
+window_border =      { fg = "#dc8d36" }
+window_text =        { fg = "#dc8ded" }
+window_current_line = { fg = "#7f0d56", bg = "#dc8d36" }
+
+
+
+# ---- SYNTAX ---
+
+[syntax]
+whitespace =    { fg = "#bbbbbb" }
+keyword =       { fg = "#dcc606" }
+comment =       { fg = "#9566aa", italic }
+preprocessor =  { fg = "#56ed36", bold, italic }
+type =          { fg = "#568d36", italic }
+lib_type =      { fg = "#365ac6" }
+posix_type =    { fg = "#365a06" }
+constant =      { fg = "#56dac6" }
+number =        { fg = "#56dac6" }
+string =        { fg = "#8f8d06" }
+char =          { fg = "#8f8d06" }
+operator =      { fg = "#dcc606" }
+punctuation =   { fg = "#008dc6" }
+function =      { fg = "#ff0036" }
+method_or_attrib = { fg = "#dc8d36" }
+lib_function =  { fg = "#dc8da6" }
+posix =         { fg = "#dc3da6" }
+specifier =     { fg = "#568d06" }

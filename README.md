@@ -351,7 +351,7 @@ Given the program's simple nature and my goal of creating an editor that is basi
 Contributions, bug reports and suggestions are welcome.
 
 Before reporting a bug, check if it has already been discovered
-in [`changelog.txt`](./changelog.txt).
+in [`CHANGELOD.md`](./CHANGELOG.md).
 
 ## License
 

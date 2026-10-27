@@ -1,6 +1,6 @@
 # --- NAME ---
 
-name = "default"
+name = "default_dark"
 
 
 
@@ -25,7 +25,6 @@ window_current_line = 	{ fg = "#80f2a9", bg = "#2372c9" }
 # ---- SYNTAX ---
 
 [syntax]
-normal = 		{ fg = "#ffffff" }
 whitespace =	{ fg = "#444444" }
 keyword = 		{ fg = "#2339f9" }
 comment = 		{ fg = "#6a9955", italic }

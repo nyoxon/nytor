@@ -16,12 +16,18 @@ int editor_handle_input(Editor* editor, struct event event) {
 	if (editor->status_bar.active && editor->status_bar.type == PT_INFO) {
 		if (event.type == EVENT_KEY)
 		{
-			editor->status_bar.active = 0;
+			prompt_deactivate(
+				&editor->status_bar,
+				editor->tsize.rows
+			);
 		}
 
 		if (event.type == EVENT_MOUSE && event.mouse.pressed)
 		{
-			editor->status_bar.active = 0;
+			prompt_deactivate(
+				&editor->status_bar,
+				editor->tsize.rows
+			);
 		}
 	}
 

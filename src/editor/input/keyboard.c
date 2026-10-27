@@ -710,14 +710,20 @@ static void editor_handle_goto(Editor* editor, struct normal_key key) {
 		}
 
 		if (editor->status_bar.type == PT_INTERACTIVE) {
-			editor->status_bar.active = 0;
+			prompt_deactivate(
+				&editor->status_bar,
+				editor->tsize.rows
+			);
 		}
 	}
 
 	else if (normal_key_equal(&key, &editor->config.keybinds[ACTION_QUIT]) ||
 			 normal_key_equal(&key, &editor->config.keybinds[ACTION_GOTO])) 
 	{
-		editor->status_bar.active = 0;
+		prompt_deactivate(
+			&editor->status_bar,
+			editor->tsize.rows
+		);
 	} 
 
 	else {
@@ -740,7 +746,10 @@ static void editor_handle_find_pattern
 {
 	if (key.content == U'\n' || key.content == U'\r') {
 		if (u32string_is_empty(&editor->status_bar.buf)) {
-			editor->status_bar.active = 0;
+			prompt_deactivate(
+				&editor->status_bar,
+				editor->tsize.rows
+			);
 
 			prompt_init(
 				&editor->status_bar, 
@@ -798,7 +807,10 @@ static void editor_handle_find_pattern
 		}
 
 		else {
-			editor->status_bar.active = 0;
+			prompt_deactivate(
+				&editor->status_bar,
+				editor->tsize.rows
+			);
 		}
 
 		u32string_free(&pattern);
@@ -807,7 +819,10 @@ static void editor_handle_find_pattern
 	else if (normal_key_equal(&key, &editor->config.keybinds[ACTION_QUIT]) ||
 			 normal_key_equal(&key, &editor->config.keybinds[ACTION_FIND]))
 	{
-		editor->status_bar.active = 0;
+		prompt_deactivate(
+			&editor->status_bar,
+			editor->tsize.rows
+		);
 	}
 
 	else {
@@ -875,7 +890,10 @@ static void editor_handle_replace_pattern
 
 			// free(a); free(b);
 
-			// editor->status_bar.active = 0;
+			// prompt_deactivate(
+			// 	&editor->status_bar,
+			// 	editor->tsize.rows
+			// );
 			// editor->actual_file->replace = 0;
 
 			// return;
@@ -897,7 +915,11 @@ static void editor_handle_replace_pattern
 			u32string_free(&editor->actual_file->replace_pattern);
 			u32string_free(&editor->actual_file->replace_text);
 
-			editor->status_bar.active = 0;
+			prompt_deactivate(
+				&editor->status_bar,
+				editor->tsize.rows
+			);
+			
 			editor->actual_file->replace = 0;
 		}
 
@@ -986,7 +1008,10 @@ static void editor_handle_replace_pattern
 	else if (normal_key_equal(&key, &editor->config.keybinds[ACTION_QUIT]) ||
 			 normal_key_equal(&key, &editor->config.keybinds[ACTION_REPLACE]))
 	{
-		editor->status_bar.active = 0;
+		prompt_deactivate(
+			&editor->status_bar,
+			editor->tsize.rows
+		);
 
 		already_checked = 0;
 		selected_before = 0;
@@ -1027,7 +1052,10 @@ int editor_open_cmd(Editor* editor, struct normal_key key) {
 			&editor->status_bar.buf);
 
 		if (editor->status_bar.type == PT_INTERACTIVE) {
-			editor->status_bar.active = 0;
+			prompt_deactivate(
+				&editor->status_bar,
+				editor->tsize.rows
+			);
 		}
 
 		if (ret < 0) {
@@ -1040,7 +1068,10 @@ int editor_open_cmd(Editor* editor, struct normal_key key) {
 	else if (normal_key_equal(&key, &editor->config.keybinds[ACTION_QUIT]) ||
 			 normal_key_equal(&key, &editor->config.keybinds[ACTION_OPEN_CMD])) 
 	{
-		editor->status_bar.active = 0;
+		prompt_deactivate(
+			&editor->status_bar,
+			editor->tsize.rows
+		);
 	}
 
 	else if (key.content == U'\t') {

@@ -31,6 +31,14 @@ void clean_terminal() {
 	}
 }
 
+void clean_prompt(size_t vsize) {
+	char tmp[50];
+	snprintf(tmp, sizeof(tmp), "\x1b[%ld;1H", vsize + 1);
+
+	write(STDOUT_FILENO, tmp, strlen(tmp));
+	write(STDOUT_FILENO, "\x1b[K", 3);
+}
+
 void disable_raw_mode() {
 	if (!raw_mode_enabled) {
 		return;

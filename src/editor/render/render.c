@@ -195,15 +195,11 @@ static void render_utf
 				file_num_lines(&editor->actual_file->file),
 				&style);
 
-			if (editor->config.background_fills_all) {
-				write_color(&editor->config.ui.normal);
-			}
+			write_color(&editor->config.ui.normal);
 
 			write(STDOUT_FILENO, " ", 1);
 
-			if (editor->config.background_fills_all) {
-				reset_color();
-			}
+			reset_color();
 		}
 
 
@@ -361,65 +357,56 @@ static void render_utf
 			cursor_screen_x += width;
 		}
 
-		if (editor->config.has_background) 
-		{
-			size_t screen_x = (cursor_screen_x > editor->view.col_offset)
-				? cursor_screen_x - editor->view.col_offset
-				: 0;
+		size_t screen_x = (cursor_screen_x > editor->view.col_offset)
+			? cursor_screen_x - editor->view.col_offset
+			: 0;
 
-			if (screen_x < screen_cols) {
-				write_color(&editor->config.ui.normal);
+		if (screen_x <= screen_cols) {
+			write_color(&editor->config.ui.normal);
 
-				size_t remaining = screen_cols - screen_x;
+			size_t remaining = screen_cols - screen_x;
 
-				if (editor->config.background_fills_all) {
-					remaining++;
-				}
+			remaining++;
 
-				// a ' ' has already been printed
-				if (empty_selected_line && remaining > 0) {
-					remaining--;
-				}
-
-				char buf[remaining];
-				memset(buf, ' ', remaining);
-
-				write(STDOUT_FILENO, buf, remaining);
+			// a ' ' has already been printed
+			if (empty_selected_line && remaining > 0) {
+				remaining--;
 			}
+
+			char buf[remaining];
+			memset(buf, ' ', remaining);
+
+			write(STDOUT_FILENO, buf, remaining);
 		}
 
 		// codepoints = 0;
 		write(STDOUT_FILENO, "\n", 1);
 	}
 
-	if (editor->config.has_background) {
-		size_t first_empty_row = 
-		(last_line > editor->view.row_offset)
-			? last_line - editor->view.row_offset
-			: last_line + 1;
+	size_t first_empty_row = 
+	(last_line > editor->view.row_offset)
+		? last_line - editor->view.row_offset
+		: last_line + 1;
 
-		if (first_empty_row < screen_rows) {
-			write_color(&editor->config.ui.normal);
+	if (first_empty_row <= screen_rows) {
+		write_color(&editor->config.ui.normal);
 
-			size_t gutter = editor->tsize.cols - screen_cols;
+		size_t gutter = editor->tsize.cols - screen_cols;
 
-			size_t remaining = screen_cols;
-			size_t remaining_lines = screen_rows - first_empty_row;
+		size_t remaining = screen_cols;
+		size_t remaining_lines = screen_rows - first_empty_row;
 
-			if (editor->config.background_fills_all) {
-				remaining += gutter + 1;
-				remaining_lines++;
-				gutter = 0;
-			}
+		remaining += gutter + 1;
+		remaining_lines++;
+		gutter = 0;
 
-			char buf[remaining];
-			memset(buf, ' ', remaining);
+		char buf[remaining];
+		memset(buf, ' ', remaining);
 
-			for (size_t y = 0; y < remaining_lines; y++) {
-				move_terminal_cursor(gutter, first_empty_row + y);
+		for (size_t y = 0; y < remaining_lines; y++) {
+			move_terminal_cursor(gutter, first_empty_row + y);
 
-				write(STDOUT_FILENO, buf, remaining);
-			}
+			write(STDOUT_FILENO, buf, remaining);
 		}
 	}
 }
@@ -442,8 +429,6 @@ void editor_move_screen_cursor(Editor* editor) {
 }
 
 void editor_render(Editor* editor) {
-	clean_terminal();
-	
 	if (terminal_supports_xterm_extensions()) {
 		write(
 			STDOUT_FILENO, 
@@ -461,17 +446,9 @@ void editor_render(Editor* editor) {
 	size_t screen_rows = editor->tsize.rows;
 	size_t screen_cols = editor->tsize.cols - gutter_width;
 
-	if (!editor->config.cursor_follow_scroll &&
-		(editor->cursor.pos.y < editor->view.row_offset ||
-		editor->cursor.pos.y >= screen_rows + editor->view.row_offset ||
-		editor->cursor.pos.x < editor->view.col_offset ||
-		editor->cursor.pos.x >= screen_cols + editor->view.col_offset))
-	{
-		hide_cursor();
-	}
-
 	// write(STDOUT_FILENO, "\x1b]122\x07", strlen("\x1b]122\x07"));
 
+	hide_cursor();
 	render_utf(editor, screen_rows, screen_cols);
 	reset_color();
 
@@ -496,5 +473,15 @@ void editor_render(Editor* editor) {
 		{
 			editor_move_screen_cursor(editor);
 		}
+	}
+
+
+	if (editor->config.cursor_follow_scroll ||
+		(editor->cursor.pos.y >= editor->view.row_offset &&
+		editor->cursor.pos.y < screen_rows + editor->view.row_offset &&
+		editor->cursor.pos.x >= editor->view.col_offset &&
+		editor->cursor.pos.x < screen_cols + editor->view.col_offset))
+	{
+		show_cursor();
 	}
 }

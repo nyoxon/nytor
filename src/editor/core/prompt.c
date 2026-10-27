@@ -67,10 +67,10 @@ Prompt prompt_new(TerminalSize tsize) {
 }
 
 void prompt_init(Prompt* pt, const char* label, PromptType type) {
-	// pt must be created by prompt_new()
-	u32string_free(&pt->label);
-	u32string_free(&pt->buf);
-	// ------
+	if (pt->active) {
+		u32string_free(&pt->label);
+		u32string_free(&pt->buf);		
+	}
 
 	pt->active = 1;
 
@@ -85,6 +85,25 @@ void prompt_init(Prompt* pt, const char* label, PromptType type) {
 
 	pt->view.col_offset = 0;
 	pt->view.row_offset = 0;
+}
+
+void prompt_deactivate(Prompt* pt, size_t vtsize) {
+	if (!pt->active) {
+		return;
+	}
+
+	u32string_free(&pt->label);
+	u32string_free(&pt->buf);
+
+	pt->active = 0;
+
+	pt->invert_color = 0;
+	pt->cursor.pos = POS_ZERO;
+
+	pt->view.col_offset = 0;
+	pt->view.row_offset = 0;
+
+	clean_prompt(vtsize);
 }
 
 void prompt_init_u32string(Prompt* pt, const u32string* lb, PromptType type) {

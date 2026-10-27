@@ -15,7 +15,6 @@ window_current_line =	{ fg = "red", bg = "bright_black" }
 
 [syntax]
 
-normal = 		{ fg = "black" }
 whitespace = 	{ fg = "bright_black"}
 keyword = 		{ fg = "blue" }
 comment = 		{ fg = "bright_black" }

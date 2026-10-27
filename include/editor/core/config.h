@@ -25,12 +25,9 @@ struct config {
 	int show_tabs;
 	int left_click_end_selection;
 	int auto_save_quit;
-	int background_fills_all;
 	int use_autocomplete;
 	int select_line_selects_next;
 	// int soft_wrap; // maybe someday
-
-	int has_background;
 
 	struct ui ui;
 	struct style theme[HL_COUNT];

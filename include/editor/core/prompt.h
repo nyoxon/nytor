@@ -71,6 +71,8 @@ Prompt prompt_new(TerminalSize tsize);
 void prompt_init(Prompt* pt, const char* label, PromptType type);
 void prompt_init_u32string(Prompt* pt, const u32string* lb, PromptType type);
 
+void prompt_deactivate(Prompt* pt, size_t vtsize);
+
 void prompt_drawn
 (
 	Prompt* pt,
