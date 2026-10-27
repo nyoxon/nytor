@@ -68,3 +68,10 @@ is now strictly synchronized with the UI's `normal`.
 regarding the previous changes, i haven't performed a
 deeper analysis, so there might be hiddern bugs or new
 ones introduced as a result of modifying these specific areas
+
+
+## 27/10/26
+
+### CHANGE:
+the `is_word_char` function in assembly lexer now
+only considers letters, numbers, and underscores

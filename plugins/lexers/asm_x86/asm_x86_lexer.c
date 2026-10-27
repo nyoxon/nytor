@@ -336,12 +336,18 @@ static int is_identifier_start(uint32_t c) {
 }
 
 static int is_identifier_continue(uint32_t c) {
-	return c == U'_' || c == U'.' || c == U'$' || c == U'%' ||
-		(c < 0x80 && isalnum((unsigned char) c) != 0) || c >= 0x80;
+	return c == U'_' || 
+		   c == U'.' || 
+		   c == U'$' || 
+		   c == U'%' ||
+		  (c < 0x80 && isalnum((unsigned char) c) != 0) || 
+		   c >= 0x80;
 }
 
 static int asm_x86_is_word_char(uint32_t c) {
-	return is_identifier_continue(c);
+	return c == U'_' ||
+		  (c < 0x80 && isalnum((unsigned char) c) != 0) ||
+		   c >= 0x80;
 }
 
 static int word_equals
