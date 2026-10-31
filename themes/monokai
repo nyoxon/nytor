@@ -1,0 +1,32 @@
+name = "monokai"
+
+[ui]
+normal = { fg = "#f8f8f2", bg = "#272822" }
+selection = { fg = "#272822", bg = "#a6e22e" }
+line_number = { fg = "#75715e" }
+line_number_current = { fg = "#e6db74", bg = "#414339", bold }
+status_bar = { fg = "#f8f8f2", bg = "#414339" }
+window_border = { fg = "#66d9ef" }
+window_text = { fg = "#a6e22e" }
+window_current_line = { fg = "#f8f8f2", bg = "#383930" }
+
+[syntax]
+normal = { fg = "#f8f8f2" }
+whitespace = { fg = "#49483e" }
+keyword = { fg = "#f92672", bold }
+comment = { fg = "#75715e", italic }
+preprocessor = { fg = "#fd971f", bold }
+type = { fg = "#66d9ef" }
+lib_type = { fg = "#a6e22e" }
+posix_type = { fg = "#ae81ff" }
+constant = { fg = "#fd971f" }
+number = { fg = "#ae81ff" }
+string = { fg = "#e6db74" }
+char = { fg = "#e6db74" }
+operator = { fg = "#f92672" }
+punctuation = { fg = "#f8f8f2" }
+function = { fg = "#a6e22e" }
+method_or_attrib = { fg = "#66d9ef" }
+lib_function = { fg = "#fd971f" }
+posix = { fg = "#a6e22e" }
+specifier = { fg = "#f92672" }

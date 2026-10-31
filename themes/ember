@@ -1,0 +1,32 @@
+name = "ember"
+
+[ui]
+normal = { fg = "#d5c5aa", bg = "#211a19" }
+selection = { fg = "#211a19", bg = "#e69b70" }
+line_number = { fg = "#725b55" }
+line_number_current = { fg = "#e5bd78", bg = "#49302b", bold }
+status_bar = { fg = "#f0d9bd", bg = "#49302b" }
+window_border = { fg = "#d87969" }
+window_text = { fg = "#d5c5aa" }
+window_current_line = { fg = "#f0d9bd", bg = "#49302b" }
+
+[syntax]
+normal = { fg = "#d5c5aa" }
+whitespace = { fg = "#55413c" }
+keyword = { fg = "#c77b86", bold }
+comment = { fg = "#80665e", italic }
+preprocessor = { fg = "#d87969", bold }
+type = { fg = "#e69b70" }
+lib_type = { fg = "#e5bd78" }
+posix_type = { fg = "#b7a0c9" }
+constant = { fg = "#d87969" }
+number = { fg = "#e69b70" }
+string = { fg = "#9eaa83" }
+char = { fg = "#9eaa83" }
+operator = { fg = "#d87969" }
+punctuation = { fg = "#bda995" }
+function = { fg = "#e5bd78" }
+method_or_attrib = { fg = "#e69b70" }
+lib_function = { fg = "#b7a0c9" }
+posix = { fg = "#9eaa83" }
+specifier = { fg = "#c77b86" }

@@ -1,0 +1,32 @@
+name = "cyberpunk"
+
+[ui]
+normal = { fg = "#e9e2ff", bg = "#100d1c" }
+selection = { fg = "#100d1c", bg = "#00e5ff" }
+line_number = { fg = "#655477" }
+line_number_current = { fg = "#ff3df2", bg = "#30203f", bold }
+status_bar = { fg = "#ffffff", bg = "#30203f" }
+window_border = { fg = "#00e5ff" }
+window_text = { fg = "#b6ff00" }
+window_current_line = { fg = "#ffffff", bg = "#211a35" }
+
+[syntax]
+normal = { fg = "#e9e2ff" }
+whitespace = { fg = "#382c4b" }
+keyword = { fg = "#ff3df2", bold }
+comment = { fg = "#706080", italic }
+preprocessor = { fg = "#ffb000", bold }
+type = { fg = "#00e5ff" }
+lib_type = { fg = "#9b7bff" }
+posix_type = { fg = "#b6ff00" }
+constant = { fg = "#ff526f" }
+number = { fg = "#ffb000" }
+string = { fg = "#b6ff00" }
+char = { fg = "#b6ff00" }
+operator = { fg = "#ff3df2" }
+punctuation = { fg = "#a99abf" }
+function = { fg = "#00e5ff" }
+method_or_attrib = { fg = "#9b7bff" }
+lib_function = { fg = "#ffb000" }
+posix = { fg = "#b6ff00" }
+specifier = { fg = "#ff526f" }

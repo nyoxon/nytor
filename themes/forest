@@ -1,0 +1,32 @@
+name = "forest"
+
+[ui]
+normal = { fg = "#e0d6bd", bg = "#17211b" }
+selection = { fg = "#17211b", bg = "#a8c686" }
+line_number = { fg = "#526858" }
+line_number_current = { fg = "#d4b483", bg = "#304337", bold }
+status_bar = { fg = "#e0d6bd", bg = "#304337" }
+window_border = { fg = "#83b5a0" }
+window_text = { fg = "#a8c686" }
+window_current_line = { fg = "#e0d6bd", bg = "#354b3c" }
+
+[syntax]
+normal = { fg = "#e0d6bd" }
+whitespace = { fg = "#3c5141" }
+keyword = { fg = "#b4a1cf", bold }
+comment = { fg = "#718777", italic }
+preprocessor = { fg = "#d98f78", bold }
+type = { fg = "#83b5a0" }
+lib_type = { fg = "#d4b483" }
+posix_type = { fg = "#a8c686" }
+constant = { fg = "#d98f78" }
+number = { fg = "#d4b483" }
+string = { fg = "#a8c686" }
+char = { fg = "#a8c686" }
+operator = { fg = "#83b5a0" }
+punctuation = { fg = "#c5b99f" }
+function = { fg = "#d4b483" }
+method_or_attrib = { fg = "#83b5a0" }
+lib_function = { fg = "#a8c686" }
+posix = { fg = "#d4b483" }
+specifier = { fg = "#b4a1cf" }

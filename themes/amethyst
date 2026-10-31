@@ -1,0 +1,32 @@
+name = "amethyst"
+
+[ui]
+normal = { fg = "#eee4fa", bg = "#1d1728" }
+selection = { fg = "#1d1728", bg = "#c4a7e7" }
+line_number = { fg = "#695b7b" }
+line_number_current = { fg = "#e0a6c8", bg = "#392b49", bold }
+status_bar = { fg = "#eee4fa", bg = "#392b49" }
+window_border = { fg = "#a78bfa" }
+window_text = { fg = "#c4a7e7" }
+window_current_line = { fg = "#eee4fa", bg = "#30243e" }
+
+[syntax]
+normal = { fg = "#eee4fa" }
+whitespace = { fg = "#493b59" }
+keyword = { fg = "#c4a7e7", bold }
+comment = { fg = "#746783", italic }
+preprocessor = { fg = "#e0a6c8", bold }
+type = { fg = "#8bc5d6" }
+lib_type = { fg = "#a78bfa" }
+posix_type = { fg = "#e6bd85" }
+constant = { fg = "#e0a6c8" }
+number = { fg = "#e6bd85" }
+string = { fg = "#a6c98c" }
+char = { fg = "#a6c98c" }
+operator = { fg = "#c4a7e7" }
+punctuation = { fg = "#b9a9cc" }
+function = { fg = "#8bc5d6" }
+method_or_attrib = { fg = "#a78bfa" }
+lib_function = { fg = "#e0a6c8" }
+posix = { fg = "#a6c98c" }
+specifier = { fg = "#e6bd85" }

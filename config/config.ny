@@ -14,7 +14,7 @@ shell = "auto"
 # your own theme
 # default = no theme
 
-theme = "default"
+theme = "midnight"
 
 
 # default tab size used in the program, but the user can

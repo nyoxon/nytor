@@ -1,0 +1,32 @@
+name = "nord"
+
+[ui]
+normal = { fg = "#eceff4", bg = "#2e3440" }
+selection = { fg = "#2e3440", bg = "#88c0d0" }
+line_number = { fg = "#616e88" }
+line_number_current = { fg = "#eceff4", bg = "#434c5e", bold }
+status_bar = { fg = "#eceff4", bg = "#434c5e" }
+window_border = { fg = "#81a1c1" }
+window_text = { fg = "#8fbcbb" }
+window_current_line = { fg = "#eceff4", bg = "#3b4252" }
+
+[syntax]
+normal = { fg = "#eceff4" }
+whitespace = { fg = "#434c5e" }
+keyword = { fg = "#81a1c1", bold }
+comment = { fg = "#616e88", italic }
+preprocessor = { fg = "#b48ead", bold }
+type = { fg = "#8fbcbb" }
+lib_type = { fg = "#88c0d0" }
+posix_type = { fg = "#b48ead" }
+constant = { fg = "#bf616a" }
+number = { fg = "#b48ead" }
+string = { fg = "#a3be8c" }
+char = { fg = "#a3be8c" }
+operator = { fg = "#81a1c1" }
+punctuation = { fg = "#d8dee9" }
+function = { fg = "#88c0d0" }
+method_or_attrib = { fg = "#8fbcbb" }
+lib_function = { fg = "#ebcb8b" }
+posix = { fg = "#d08770" }
+specifier = { fg = "#d08770" }

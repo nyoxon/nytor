@@ -1,0 +1,32 @@
+name = "coffee"
+
+[ui]
+normal = { fg = "#e6cfa8", bg = "#211c18" }
+selection = { fg = "#211c18", bg = "#d7b899" }
+line_number = { fg = "#756456" }
+line_number_current = { fg = "#e6cfa8", bg = "#45372d", bold }
+status_bar = { fg = "#e6cfa8", bg = "#45372d" }
+window_border = { fg = "#c49a6c" }
+window_text = { fg = "#d7b899" }
+window_current_line = { fg = "#e6cfa8", bg = "#342a23" }
+
+[syntax]
+normal = { fg = "#e6cfa8" }
+whitespace = { fg = "#45372d" }
+keyword = { fg = "#c9a7b8", bold }
+comment = { fg = "#756456", italic }
+preprocessor = { fg = "#d28b65", bold }
+type = { fg = "#d7b899" }
+lib_type = { fg = "#c49a6c" }
+posix_type = { fg = "#a9b18a" }
+constant = { fg = "#d28b65" }
+number = { fg = "#c49a6c" }
+string = { fg = "#a9b18a" }
+char = { fg = "#a9b18a" }
+operator = { fg = "#c9a7b8" }
+punctuation = { fg = "#c4ad91" }
+function = { fg = "#e6cfa8" }
+method_or_attrib = { fg = "#c49a6c" }
+lib_function = { fg = "#d7b899" }
+posix = { fg = "#a9b18a" }
+specifier = { fg = "#d28b65" }

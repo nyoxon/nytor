@@ -1244,7 +1244,7 @@ static const struct specific_keyword C_POSIX_KEY[] = {
 	{"SIGSEGV",			7},
 	{"SIGUSR2",			7},
 	{"SIGPIPE",			7},
-	{"SIGALARM",		8},
+	{"SIGALRM",			7},
 	{"SIGTERM",			7},
 	{"SIGSTKFLT",		9},
 	{"SIGCHLD",			7},
