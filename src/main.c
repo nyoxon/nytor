@@ -179,6 +179,30 @@ int main(int argc, char* argv[]) {
 
 		/// --- POLL ---
 		int ret = poll(fds, 2, timeout);
+		
+		// MAYBE: there is a possibility that a typical
+		// race condition could occur in this program:
+		// 
+		// - the while loop's check passes (running = 1)
+		// - exit_requested = 0
+		// - the program goes through the check for
+		// exit_requested (and passes)
+		// - a stop signal arrives (exit_requested = 1)
+		// - the program blocks in poll
+		// - the program will only handle the
+		// signal once a event from the poll's fd
+		// occurs (input from user or watch file)
+		// or its timeout expires
+		//
+		// since the program uses poll with a non-negative
+		// timeout, there will simply be a delay
+		// before the signal is handled
+		// there are several solutions to this problem,
+		// such as using pselect/ppoll, a self-pipe + signalfd etc
+		// but i don't see it as a something very
+		// important to care about and because
+		// i'm feeling really lazy at the moment
+		// i'm writing this comment
 
 		if (ret > 0) {
 			if (editor.debug_mode) {
